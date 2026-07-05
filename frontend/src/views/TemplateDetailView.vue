@@ -11,21 +11,32 @@ const route = useRoute();
 const template = ref<TemplateDetail | null>(null);
 const loading = ref(true);
 const error = ref("");
+const editableLayers = ref<CanvasLayer[]>([]);
 
 const templateId = computed(() => Number(route.params.id));
-const canvasLayers = computed<CanvasLayer[]>(() => {
-  if (!template.value) {
-    return [];
-  }
-
-  try {
-    const canvas = JSON.parse(template.value.canvasJson) as { layers?: unknown };
-    return Array.isArray(canvas.layers) ? canvas.layers.filter(isCanvasLayer) : [];
-  } catch {
-    return [];
-  }
-});
+const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value);
 const canvasLayerCount = computed(() => canvasLayers.value.length);
+const firstTextLayerIndex = computed(() =>
+  editableLayers.value.findIndex((layer) => layer.type === "text"),
+);
+const firstTextLayerText = computed({
+  get: () => {
+    const layer = editableLayers.value[firstTextLayerIndex.value];
+    return layer ? optionalString(layer.text ?? layer.value) ?? "" : "";
+  },
+  set: (value: string) => {
+    const index = firstTextLayerIndex.value;
+    const layer = editableLayers.value[index];
+    if (!layer) {
+      return;
+    }
+
+    const textField = typeof layer.text === "string" || typeof layer.value !== "string"
+      ? "text"
+      : "value";
+    editableLayers.value[index] = { ...layer, [textField]: value };
+  },
+});
 const canvasFrameStyle = computed(() => {
   if (!template.value) {
     return {};
@@ -48,8 +59,13 @@ function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 function layerText(layer: CanvasLayer): string {
-  return stringValue(layer.text ?? layer.value ?? layer.name, stringValue(layer.type, "Layer"));
+  return optionalString(layer.text ?? layer.value)
+    ?? stringValue(layer.name, stringValue(layer.type, "Layer"));
 }
 
 function layerImageSource(layer: CanvasLayer): string {
@@ -90,6 +106,15 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   };
 }
 
+function parseCanvasLayers(canvasJson: string): CanvasLayer[] {
+  try {
+    const canvas = JSON.parse(canvasJson) as { layers?: unknown };
+    return Array.isArray(canvas.layers) ? canvas.layers.filter(isCanvasLayer) : [];
+  } catch {
+    return [];
+  }
+}
+
 onMounted(async () => {
   if (!Number.isFinite(templateId.value)) {
     error.value = "Template id is invalid";
@@ -99,6 +124,7 @@ onMounted(async () => {
 
   try {
     template.value = await getTemplate(templateId.value);
+    editableLayers.value = parseCanvasLayers(template.value.canvasJson);
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot load template";
   } finally {
@@ -152,10 +178,21 @@ onMounted(async () => {
 
         <div class="detail-actions">
           <button class="primary-action" type="button" disabled>
-            Open editor
+            Save draft
           </button>
-          <span class="muted">Editing starts in step 33.</span>
+          <span class="muted">Local draft</span>
         </div>
+
+        <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
+          <label for="first-text-layer">Text layer</label>
+          <textarea
+            id="first-text-layer"
+            v-model="firstTextLayerText"
+            maxlength="120"
+            rows="4"
+          />
+        </div>
+        <p v-else class="muted">No text layer.</p>
       </div>
     </article>
   </section>
