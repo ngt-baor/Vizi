@@ -159,6 +159,56 @@ class DesignApiIntegrationTests {
     }
 
     @Test
+    void ownerCanListOnlyTheirDesignsNewestFirst() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        userRepository.save(new User("other@example.test", "test-hash", "Other"));
+        var template = templateRepository.save(new Template(
+                "List Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[]}",
+                true
+        ));
+
+        var firstResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number firstDesignId = JsonPath.read(firstResponse.getResponse().getContentAsString(), "$.id");
+        mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("other@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(put("/api/designs/" + firstDesignId)
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Newest Owner Draft",
+                                  "canvasJson": "{\\"layers\\":[]}"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/designs")
+                        .with(user("owner@example.test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].name").value("Newest Owner Draft"))
+                .andExpect(jsonPath("$[0].canvasJson").doesNotExist())
+                .andExpect(jsonPath("$[1].name").value("List Card"));
+    }
+
+    @Test
     void anotherUserCannotReadOrUpdateOwnedDesign() throws Exception {
         userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
         userRepository.save(new User("other@example.test", "test-hash", "Other"));

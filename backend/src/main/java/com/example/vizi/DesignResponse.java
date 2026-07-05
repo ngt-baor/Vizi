@@ -6,6 +6,27 @@ import java.time.Instant;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+record DesignListItem(
+        Long id,
+        Long templateId,
+        String name,
+        BigDecimal widthMm,
+        BigDecimal heightMm,
+        Instant updatedAt
+) {
+
+    static DesignListItem from(Design design) {
+        return new DesignListItem(
+                design.id(),
+                design.templateId(),
+                design.name(),
+                design.widthMm(),
+                design.heightMm(),
+                design.updatedAt()
+        );
+    }
+}
+
 record DesignDetail(
         Long id,
         Long templateId,

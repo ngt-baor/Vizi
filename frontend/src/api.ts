@@ -34,6 +34,8 @@ export type DesignDetail = {
   updatedAt: string;
 };
 
+export type DesignListItem = Omit<DesignDetail, "canvasJson">;
+
 type CsrfResponse = {
   headerName: string;
   token: string;
@@ -166,6 +168,34 @@ export async function logoutAccount(): Promise<void> {
   if (!response.ok) {
     throw new Error(`Logout failed: ${response.status}`);
   }
+}
+
+export async function getDesigns(): Promise<DesignListItem[]> {
+  const response = await fetch(`${apiBaseUrl}/api/designs`, {
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    throw new Error("Sign in to view your drafts");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Draft list failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<DesignListItem[]>;
+}
+
+export async function getDesign(designId: number): Promise<DesignDetail> {
+  const response = await fetch(`${apiBaseUrl}/api/designs/${designId}`, {
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    throw new Error("Sign in to view your drafts");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Draft detail failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<DesignDetail>;
 }
 
 export async function createDesignFromTemplate(templateId: number): Promise<DesignDetail> {

@@ -1,5 +1,7 @@
 package com.example.vizi;
 
+import java.util.List;
+
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,11 @@ class DesignController {
 
     DesignController(DesignService designService) {
         this.designService = designService;
+    }
+
+    @GetMapping
+    List<DesignListItem> listDesigns(Authentication authentication) {
+        return designService.listOwnedDesigns(authentication.getName());
     }
 
     @PostMapping("/from-template/{templateId}")

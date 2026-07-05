@@ -1,5 +1,7 @@
 package com.example.vizi;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +28,14 @@ class DesignService {
         this.templateRepository = templateRepository;
         this.authService = authService;
         this.objectMapper = objectMapper;
+    }
+
+    List<DesignListItem> listOwnedDesigns(String email) {
+        var user = authService.requireUser(email);
+        return designRepository.findByUser_IdOrderByUpdatedAtDesc(user.id())
+                .stream()
+                .map(DesignListItem::from)
+                .toList();
     }
 
     @Transactional
