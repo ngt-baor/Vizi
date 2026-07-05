@@ -1,18 +1,35 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { apiBaseUrl, getHealth, type HealthResponse } from "../api";
+import {
+  apiBaseUrl,
+  getHealth,
+  getTemplates,
+  type HealthResponse,
+  type TemplateListItem,
+} from "../api";
 
 const health = ref<HealthResponse | null>(null);
-const error = ref("");
-const loading = ref(true);
+const templates = ref<TemplateListItem[]>([]);
+const healthError = ref("");
+const templateError = ref("");
+const healthLoading = ref(true);
+const templatesLoading = ref(true);
 
 onMounted(async () => {
   try {
     health.value = await getHealth();
   } catch (unknownError) {
-    error.value = unknownError instanceof Error ? unknownError.message : "Cannot reach backend";
+    healthError.value = unknownError instanceof Error ? unknownError.message : "Cannot reach backend";
   } finally {
-    loading.value = false;
+    healthLoading.value = false;
+  }
+
+  try {
+    templates.value = await getTemplates();
+  } catch (unknownError) {
+    templateError.value = unknownError instanceof Error ? unknownError.message : "Cannot load templates";
+  } finally {
+    templatesLoading.value = false;
   }
 });
 </script>
@@ -31,12 +48,44 @@ onMounted(async () => {
     <div class="status-panel" aria-label="Backend status">
       <span
         class="status-dot"
-        :class="{ 'status-dot--error': error }"
+        :class="{ 'status-dot--error': healthError }"
         aria-hidden="true"
       ></span>
-      <span v-if="loading">Checking backend...</span>
+      <span v-if="healthLoading">Checking backend...</span>
       <span v-else-if="health">Backend {{ health.service }}: {{ health.status }}</span>
-      <span v-else>{{ error }}</span>
+      <span v-else>{{ healthError }}</span>
     </div>
+
+    <section class="template-section" aria-labelledby="template-heading">
+      <div class="section-heading">
+        <p class="eyebrow">Templates</p>
+        <h2 id="template-heading">Start from a saved layout</h2>
+      </div>
+
+      <p v-if="templatesLoading" class="muted">Loading templates...</p>
+      <p v-else-if="templateError" class="error-text">{{ templateError }}</p>
+      <p v-else-if="templates.length === 0" class="muted">No active templates yet.</p>
+
+      <div v-else class="template-grid">
+        <article
+          v-for="template in templates"
+          :key="template.id"
+          class="template-card"
+        >
+          <div class="template-preview" aria-hidden="true">
+            <img
+              v-if="template.previewUrl"
+              :src="template.previewUrl"
+              :alt="template.name"
+            />
+            <span v-else>{{ template.category }}</span>
+          </div>
+          <div class="template-meta">
+            <h3>{{ template.name }}</h3>
+            <p>{{ template.category }} - {{ template.widthMm }} x {{ template.heightMm }} mm</p>
+          </div>
+        </article>
+      </div>
+    </section>
   </section>
 </template>
