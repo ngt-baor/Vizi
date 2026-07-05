@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { RouterLink, useRoute } from "vue-router";
-import { getDesign, updateDesign, type DesignDetail } from "../api";
+import { RouterLink, useRoute, useRouter } from "vue-router";
+import { deleteDesign, getDesign, updateDesign, type DesignDetail } from "../api";
 
 type CanvasLayer = Record<string, unknown> & {
   type?: string;
 };
 
 const route = useRoute();
+const router = useRouter();
 const design = ref<DesignDetail | null>(null);
 const loading = ref(true);
 const error = ref("");
 const editableLayers = ref<CanvasLayer[]>([]);
 const saving = ref(false);
+const deleting = ref(false);
+const confirmingDelete = ref(false);
 const saveMessage = ref("");
 const saveError = ref("");
 
@@ -151,6 +154,31 @@ async function saveDraft(): Promise<void> {
   }
 }
 
+async function deleteDraft(): Promise<void> {
+  if (!design.value || deleting.value) {
+    return;
+  }
+  if (!confirmingDelete.value) {
+    confirmingDelete.value = true;
+    saveMessage.value = "";
+    saveError.value = "";
+    return;
+  }
+
+  deleting.value = true;
+  saveError.value = "";
+
+  try {
+    await deleteDesign(design.value.id);
+    await router.push({ name: "designs" });
+  } catch (unknownError) {
+    saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot delete draft";
+    confirmingDelete.value = false;
+  } finally {
+    deleting.value = false;
+  }
+}
+
 onMounted(async () => {
   if (!Number.isFinite(designId.value)) {
     error.value = "Draft id is invalid";
@@ -218,6 +246,14 @@ onMounted(async () => {
         <div class="detail-actions">
           <button class="primary-action" type="button" :disabled="saving" @click="saveDraft">
             {{ saving ? "Saving..." : "Save draft" }}
+          </button>
+          <button
+            class="danger-action"
+            type="button"
+            :disabled="saving || deleting"
+            @click="deleteDraft"
+          >
+            {{ deleting ? "Deleting..." : confirmingDelete ? "Confirm delete" : "Delete draft" }}
           </button>
           <span v-if="saveMessage" class="save-status" role="status">{{ saveMessage }}</span>
           <span v-else-if="!saveError" class="muted">Saved draft</span>

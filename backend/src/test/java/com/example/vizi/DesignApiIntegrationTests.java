@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -243,6 +244,45 @@ class DesignApiIntegrationTests {
                                 }
                                 """))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void ownerCanDeleteDesignAndOtherUserCannotDeleteIt() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        userRepository.save(new User("other@example.test", "test-hash", "Other"));
+        var template = templateRepository.save(new Template(
+                "Delete Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[]}",
+                true
+        ));
+        var createResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createResponse.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(delete("/api/designs/" + designId)
+                        .with(user("other@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(delete("/api/designs/" + designId)
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/designs/" + designId)
+                        .with(user("owner@example.test")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/designs")
+                        .with(user("owner@example.test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test

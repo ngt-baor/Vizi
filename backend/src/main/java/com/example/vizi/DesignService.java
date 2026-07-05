@@ -63,6 +63,14 @@ class DesignService {
         return DesignDetail.from(design);
     }
 
+    @Transactional
+    void deleteOwnedDesign(Long designId, String email) {
+        var user = authService.requireUser(email);
+        var design = designRepository.findByIdAndUser_Id(designId, user.id())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
+        designRepository.delete(design);
+    }
+
     private void validateCanvas(String canvasJson) {
         try {
             var canvas = objectMapper.readTree(canvasJson);

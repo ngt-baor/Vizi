@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,5 +49,11 @@ class DesignController {
             Authentication authentication
     ) {
         return designService.updateOwnedDesign(designId, request, authentication.getName());
+    }
+
+    @DeleteMapping("/{designId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteDesign(@PathVariable Long designId, Authentication authentication) {
+        designService.deleteOwnedDesign(designId, authentication.getName());
     }
 }

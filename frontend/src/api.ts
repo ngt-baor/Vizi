@@ -88,7 +88,7 @@ async function getCsrf(): Promise<CsrfResponse> {
 
 async function writeWithCsrf(
   path: string,
-  method: "POST" | "PUT",
+  method: "DELETE" | "POST" | "PUT",
   body?: BodyInit,
   contentType?: string,
 ): Promise<Response> {
@@ -229,6 +229,16 @@ export async function updateDesign(
   }
 
   return response.json() as Promise<DesignDetail>;
+}
+
+export async function deleteDesign(designId: number): Promise<void> {
+  const response = await writeWithCsrf(`/api/designs/${designId}`, "DELETE");
+  if (response.status === 401) {
+    throw new Error("Sign in to delete your draft");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Delete draft failed: ${response.status}`);
+  }
 }
 
 export { apiBaseUrl };
