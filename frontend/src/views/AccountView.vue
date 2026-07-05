@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   getCurrentUser,
   loginAccount,
@@ -8,6 +9,8 @@ import {
   type AuthUser,
 } from "../api";
 
+const route = useRoute();
+const router = useRouter();
 const mode = ref<"login" | "register">("login");
 const email = ref("");
 const password = ref("");
@@ -17,9 +20,20 @@ const loading = ref(true);
 const submitting = ref(false);
 const error = ref("");
 
+function localRedirectPath(): string {
+  const redirect = route.query.redirect;
+  return typeof redirect === "string" && redirect.startsWith("/") && !redirect.startsWith("//")
+    ? redirect
+    : "";
+}
+
 onMounted(async () => {
   try {
     currentUser.value = await getCurrentUser();
+    const redirectPath = localRedirectPath();
+    if (currentUser.value && redirectPath) {
+      await router.push(redirectPath);
+    }
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot load account";
   } finally {
@@ -38,6 +52,10 @@ async function submit(): Promise<void> {
     await loginAccount(email.value, password.value);
     currentUser.value = await getCurrentUser();
     password.value = "";
+    const redirectPath = localRedirectPath();
+    if (redirectPath) {
+      await router.push(redirectPath);
+    }
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Authentication failed";
   } finally {

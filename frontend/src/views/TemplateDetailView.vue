@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { RouterLink, useRoute } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   createDesignFromTemplate,
+  getCurrentUser,
   getTemplate,
   updateDesign,
   type TemplateDetail,
@@ -13,6 +14,7 @@ type CanvasLayer = Record<string, unknown> & {
 };
 
 const route = useRoute();
+const router = useRouter();
 const template = ref<TemplateDetail | null>(null);
 const loading = ref(true);
 const error = ref("");
@@ -142,11 +144,20 @@ async function saveDraft(): Promise<void> {
     return;
   }
 
-  saving.value = true;
   saveMessage.value = "";
   saveError.value = "";
 
   try {
+    if (savedDesignId.value === null) {
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        await router.push({ name: "account", query: { redirect: route.fullPath } });
+        return;
+      }
+    }
+
+    saving.value = true;
+
     if (savedDesignId.value === null) {
       const created = await createDesignFromTemplate(template.value.id);
       savedDesignId.value = created.id;
