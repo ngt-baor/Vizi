@@ -348,6 +348,17 @@ h2 {
   align-items: center;
 }
 
+.save-status {
+  color: #397052;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.error-text a {
+  color: inherit;
+  font-weight: 800;
+}
+
 .editor-panel {
   display: grid;
   gap: 8px;

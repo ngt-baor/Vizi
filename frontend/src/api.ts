@@ -24,6 +24,16 @@ export type AuthUser = {
   role: string;
 };
 
+export type DesignDetail = {
+  id: number;
+  templateId: number | null;
+  name: string;
+  canvasJson: string;
+  widthMm: number;
+  heightMm: number;
+  updatedAt: string;
+};
+
 type CsrfResponse = {
   headerName: string;
   token: string;
@@ -74,7 +84,12 @@ async function getCsrf(): Promise<CsrfResponse> {
   return response.json() as Promise<CsrfResponse>;
 }
 
-async function writeAuth(path: string, body?: BodyInit, contentType?: string): Promise<Response> {
+async function writeWithCsrf(
+  path: string,
+  method: "POST" | "PUT",
+  body?: BodyInit,
+  contentType?: string,
+): Promise<Response> {
   const csrf = await getCsrf();
   const headers = new Headers({ [csrf.headerName]: csrf.token });
   if (contentType) {
@@ -82,7 +97,7 @@ async function writeAuth(path: string, body?: BodyInit, contentType?: string): P
   }
 
   return fetch(`${apiBaseUrl}${path}`, {
-    method: "POST",
+    method,
     credentials: "include",
     headers,
     body,
@@ -103,8 +118,9 @@ export async function registerAccount(
   password: string,
   fullName: string,
 ): Promise<AuthUser> {
-  const response = await writeAuth(
+  const response = await writeWithCsrf(
     "/api/auth/register",
+    "POST",
     JSON.stringify({ email, password, fullName }),
     "application/json",
   );
@@ -118,8 +134,9 @@ export async function registerAccount(
 
 export async function loginAccount(email: string, password: string): Promise<void> {
   const form = new URLSearchParams({ email, password });
-  const response = await writeAuth(
+  const response = await writeWithCsrf(
     "/api/auth/login",
+    "POST",
     form,
     "application/x-www-form-urlencoded;charset=UTF-8",
   );
@@ -145,10 +162,43 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 export async function logoutAccount(): Promise<void> {
-  const response = await writeAuth("/api/auth/logout");
+  const response = await writeWithCsrf("/api/auth/logout", "POST");
   if (!response.ok) {
     throw new Error(`Logout failed: ${response.status}`);
   }
+}
+
+export async function createDesignFromTemplate(templateId: number): Promise<DesignDetail> {
+  const response = await writeWithCsrf(`/api/designs/from-template/${templateId}`, "POST");
+  if (response.status === 401) {
+    throw new Error("Sign in to save your draft");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Create draft failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<DesignDetail>;
+}
+
+export async function updateDesign(
+  designId: number,
+  name: string,
+  canvasJson: string,
+): Promise<DesignDetail> {
+  const response = await writeWithCsrf(
+    `/api/designs/${designId}`,
+    "PUT",
+    JSON.stringify({ name, canvasJson }),
+    "application/json",
+  );
+  if (response.status === 401) {
+    throw new Error("Sign in to save your draft");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Save draft failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<DesignDetail>;
 }
 
 export { apiBaseUrl };

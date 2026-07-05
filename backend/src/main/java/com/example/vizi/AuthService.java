@@ -41,8 +41,12 @@ class AuthService {
 
     @Transactional(readOnly = true)
     AuthUser getByEmail(String email) {
+        return AuthUser.from(requireUser(email));
+    }
+
+    @Transactional(readOnly = true)
+    User requireUser(String email) {
         return userRepository.findByEmailIgnoreCase(email)
-                .map(AuthUser::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required"));
     }
 }

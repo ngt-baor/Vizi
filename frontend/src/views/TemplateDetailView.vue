@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute } from "vue-router";
-import { getTemplate, type TemplateDetail } from "../api";
+import {
+  createDesignFromTemplate,
+  getTemplate,
+  updateDesign,
+  type TemplateDetail,
+} from "../api";
 
 type CanvasLayer = Record<string, unknown> & {
   type?: string;
@@ -12,6 +17,10 @@ const template = ref<TemplateDetail | null>(null);
 const loading = ref(true);
 const error = ref("");
 const editableLayers = ref<CanvasLayer[]>([]);
+const savedDesignId = ref<number | null>(null);
+const saving = ref(false);
+const saveMessage = ref("");
+const saveError = ref("");
 
 const templateId = computed(() => Number(route.params.id));
 const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value);
@@ -35,6 +44,7 @@ const firstTextLayerText = computed({
       ? "text"
       : "value";
     editableLayers.value[index] = { ...layer, [textField]: value };
+    saveMessage.value = "";
   },
 });
 const canvasFrameStyle = computed(() => {
@@ -115,6 +125,45 @@ function parseCanvasLayers(canvasJson: string): CanvasLayer[] {
   }
 }
 
+function serializeCanvas(): string {
+  try {
+    const canvas = JSON.parse(template.value?.canvasJson ?? "{}");
+    if (typeof canvas === "object" && canvas !== null && !Array.isArray(canvas)) {
+      return JSON.stringify({ ...canvas, layers: editableLayers.value });
+    }
+  } catch {
+    // Invalid template JSON falls back to the validated canvas shape below.
+  }
+  return JSON.stringify({ layers: editableLayers.value });
+}
+
+async function saveDraft(): Promise<void> {
+  if (!template.value || saving.value) {
+    return;
+  }
+
+  saving.value = true;
+  saveMessage.value = "";
+  saveError.value = "";
+
+  try {
+    if (savedDesignId.value === null) {
+      const created = await createDesignFromTemplate(template.value.id);
+      savedDesignId.value = created.id;
+    }
+    const saved = await updateDesign(
+      savedDesignId.value,
+      template.value.name,
+      serializeCanvas(),
+    );
+    saveMessage.value = `Draft #${saved.id} saved`;
+  } catch (unknownError) {
+    saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot save draft";
+  } finally {
+    saving.value = false;
+  }
+}
+
 onMounted(async () => {
   if (!Number.isFinite(templateId.value)) {
     error.value = "Template id is invalid";
@@ -177,11 +226,18 @@ onMounted(async () => {
         </p>
 
         <div class="detail-actions">
-          <button class="primary-action" type="button" disabled>
-            Save draft
+          <button class="primary-action" type="button" :disabled="saving" @click="saveDraft">
+            {{ saving ? "Saving..." : "Save draft" }}
           </button>
-          <span class="muted">Local draft</span>
+          <span v-if="saveMessage" class="save-status" role="status">{{ saveMessage }}</span>
+          <span v-else-if="!saveError" class="muted">
+            {{ savedDesignId === null ? "Local draft" : "Unsaved changes" }}
+          </span>
         </div>
+        <p v-if="saveError" class="error-text" role="alert">
+          {{ saveError }}
+          <RouterLink v-if="saveError.includes('Sign in')" to="/account">Open account</RouterLink>
+        </p>
 
         <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
           <label for="first-text-layer">Text layer</label>
