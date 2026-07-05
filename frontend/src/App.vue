@@ -4,6 +4,7 @@
       <RouterLink to="/">Vizi</RouterLink>
       <div class="topbar-links">
         <span>Business card design studio</span>
+        <RouterLink to="/templates">Templates</RouterLink>
         <RouterLink to="/designs">My drafts</RouterLink>
         <RouterLink to="/account">Account</RouterLink>
       </div>
