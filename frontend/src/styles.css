@@ -1,0 +1,114 @@
+:root {
+  color: #18212f;
+  background: #f6f7f9;
+  font-family:
+    Inter, "Noto Sans", "Segoe UI", Arial, system-ui, -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+code {
+  border-radius: 6px;
+  background: #eef1f5;
+  color: #263142;
+  padding: 2px 6px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.topbar {
+  width: min(920px, 100%);
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+}
+
+.topbar a {
+  color: #18212f;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.home-view {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+.brand-panel {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 28px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: #2868c8;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.15;
+}
+
+.summary {
+  max-width: 680px;
+  margin: 14px 0 0;
+  color: #556070;
+  line-height: 1.6;
+}
+
+.status-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #2d3a4b;
+  font-size: 14px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #0f9f6e;
+  flex: 0 0 auto;
+}
+
+.status-dot--error {
+  background: #c24135;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 20px;
+  }
+
+  .brand-panel {
+    padding: 20px;
+  }
+
+  h1 {
+    font-size: 26px;
+  }
+}

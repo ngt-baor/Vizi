@@ -1,5 +1,10 @@
 HELP.md
 target/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -31,3 +36,36 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local harness / agent memory ###
+.agents/
+.codex/
+.claude/
+.cursor/
+.copilot/
+.windsurf/
+.gemini/
+.continue/
+.aider*
+.codex-work/
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+*.log
+
+### Local harness / agent memory ###
+.agents/
+.codex/
+.claude/
+.cursor/
+.copilot/
+.windsurf/
+.gemini/
+.continue/
+.aider*
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+*.log
