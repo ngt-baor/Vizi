@@ -4,13 +4,29 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ResponseEntity<ApiError> validation(MethodArgumentNotValidException exception, HttpServletRequest request) {
+        return ResponseEntity
+                .badRequest()
+                .body(ApiError.of(400, "Validation failed", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<ApiError> malformedJson(HttpMessageNotReadableException exception, HttpServletRequest request) {
+        return ResponseEntity
+                .badRequest()
+                .body(ApiError.of(400, "Malformed JSON", request.getRequestURI()));
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiError> badRequest(IllegalArgumentException exception, HttpServletRequest request) {
