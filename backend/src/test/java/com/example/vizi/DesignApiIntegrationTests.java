@@ -47,6 +47,9 @@ class DesignApiIntegrationTests {
     DesignRepository designRepository;
 
     @Autowired
+    DesignSnapshotRepository designSnapshotRepository;
+
+    @Autowired
     TemplateRepository templateRepository;
 
     @Autowired
@@ -157,6 +160,10 @@ class DesignApiIntegrationTests {
                 .andReturn();
         String loadedCanvas = JsonPath.read(getResponse.getResponse().getContentAsString(), "$.canvasJson");
         assertThat((String) JsonPath.read(loadedCanvas, "$.layers[0].text")).isEqualTo("Saved Studio");
+        var snapshots = designSnapshotRepository.findByDesign_IdOrderByIdAsc(designId.longValue());
+        assertThat(snapshots).hasSize(1);
+        assertThat(snapshots.getFirst().reason()).isEqualTo("save");
+        assertThat((String) JsonPath.read(snapshots.getFirst().canvasJson(), "$.layers[0].text")).isEqualTo("Saved Studio");
     }
 
     @Test
@@ -266,6 +273,19 @@ class DesignApiIntegrationTests {
                 .andReturn();
         Number designId = JsonPath.read(createResponse.getResponse().getContentAsString(), "$.id");
 
+        mockMvc.perform(put("/api/designs/" + designId)
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Delete Card Snapshot",
+                                  "canvasJson": "{\\"layers\\":[{\\"type\\":\\"text\\",\\"text\\":\\"Before Delete\\"}]}"
+                                }
+                                """))
+                .andExpect(status().isOk());
+        assertThat(designSnapshotRepository.countByDesign_Id(designId.longValue())).isEqualTo(1);
+
         mockMvc.perform(delete("/api/designs/" + designId)
                         .with(user("other@example.test"))
                         .with(csrf()))
@@ -283,6 +303,7 @@ class DesignApiIntegrationTests {
                         .with(user("owner@example.test")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
+        assertThat(designSnapshotRepository.countByDesign_Id(designId.longValue())).isZero();
     }
 
     @Test
@@ -323,6 +344,7 @@ class DesignApiIntegrationTests {
                 .andReturn();
         String loadedCanvas = JsonPath.read(getResponse.getResponse().getContentAsString(), "$.canvasJson");
         assertThat((String) JsonPath.read(loadedCanvas, "$.layers[0].text")).isEqualTo("Original");
+        assertThat(designSnapshotRepository.countByDesign_Id(designId.longValue())).isZero();
     }
 
     @Test

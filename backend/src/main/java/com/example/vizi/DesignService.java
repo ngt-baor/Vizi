@@ -14,17 +14,20 @@ import tools.jackson.databind.ObjectMapper;
 class DesignService {
 
     private final DesignRepository designRepository;
+    private final DesignSnapshotRepository designSnapshotRepository;
     private final TemplateRepository templateRepository;
     private final AuthService authService;
     private final ObjectMapper objectMapper;
 
     DesignService(
             DesignRepository designRepository,
+            DesignSnapshotRepository designSnapshotRepository,
             TemplateRepository templateRepository,
             AuthService authService,
             ObjectMapper objectMapper
     ) {
         this.designRepository = designRepository;
+        this.designSnapshotRepository = designSnapshotRepository;
         this.templateRepository = templateRepository;
         this.authService = authService;
         this.objectMapper = objectMapper;
@@ -60,6 +63,7 @@ class DesignService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
         validateCanvas(request.canvasJson());
         design.update(request.name().trim(), request.canvasJson());
+        designSnapshotRepository.save(new DesignSnapshot(design, user, "save", request.canvasJson()));
         return DesignDetail.from(design);
     }
 
