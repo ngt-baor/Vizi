@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { RouterLink } from "vue-router";
 import {
   apiBaseUrl,
   getHealth,
@@ -38,9 +39,10 @@ onMounted(async () => {
   <section class="home-view">
     <div class="brand-panel">
       <p class="eyebrow">Vizi</p>
-      <h1>Card visit editor</h1>
+      <h1>Luxury card studio</h1>
       <p class="summary">
-        Frontend Vue workspace is connected to backend API target:
+        Choose a refined business-card layout, inspect its canvas, then move into editing.
+        API target:
         <code>{{ apiBaseUrl }}</code>
       </p>
     </div>
@@ -67,9 +69,10 @@ onMounted(async () => {
       <p v-else-if="templates.length === 0" class="muted">No active templates yet.</p>
 
       <div v-else class="template-grid">
-        <article
+        <RouterLink
           v-for="template in templates"
           :key="template.id"
+          :to="{ name: 'template-detail', params: { id: template.id } }"
           class="template-card"
         >
           <div class="template-preview" aria-hidden="true">
@@ -84,7 +87,7 @@ onMounted(async () => {
             <h3>{{ template.name }}</h3>
             <p>{{ template.category }} - {{ template.widthMm }} x {{ template.heightMm }} mm</p>
           </div>
-        </article>
+        </RouterLink>
       </div>
     </section>
   </section>

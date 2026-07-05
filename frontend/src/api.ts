@@ -13,6 +13,10 @@ export type TemplateListItem = {
   heightMm: number;
 };
 
+export type TemplateDetail = TemplateListItem & {
+  canvasJson: string;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
 export async function getHealth(): Promise<HealthResponse> {
@@ -33,6 +37,16 @@ export async function getTemplates(): Promise<TemplateListItem[]> {
   }
 
   return response.json() as Promise<TemplateListItem[]>;
+}
+
+export async function getTemplate(id: number): Promise<TemplateDetail> {
+  const response = await fetch(`${apiBaseUrl}/api/templates/${id}`);
+
+  if (!response.ok) {
+    throw new Error(`Template detail failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<TemplateDetail>;
 }
 
 export { apiBaseUrl };
