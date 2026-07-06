@@ -1156,7 +1156,7 @@ Voi `gemini-3.1-flash-lite`, chi phi text/JSON thuong rat thap neu prompt ngan v
 
 - Xoa phong/tai tao anh bang `gemini-3.1-flash-lite-image` co chi phi theo anh output.
 - Tao anh background hoac card mau nhieu lan se tang chi phi nhanh.
-- MVP nen bat text/JSON/asset search truoc, con image generation de sau hoac gioi han quota rat thap.
+- MVP nen bat text/JSON patch truoc, asset search de sau khi editor/palette/patch on dinh, con image generation va xoa phong de cuoi hoac gioi han that thap.
 
 Phuong an mac dinh cho Vizi:
 
@@ -1387,8 +1387,8 @@ Moc hoan thien:
 - Het buoc 56: editor MVP co the sua card co ban.
 - Het buoc 56R: editor dat muc Canva/Figma-lite cho thao tac layer co ban.
 - Het buoc 62: editor co upload anh va QR.
-- Het buoc 88: editor co asset/icon search basic.
-- Het buoc 91: editor co asset/icon search thong minh bang embedding.
+- Het buoc 89: editor co asset/icon search basic.
+- Het buoc 92: editor co asset/icon search thong minh bang embedding.
 
 #### Nhom 7: Upload, asset va QR
 
@@ -1413,75 +1413,89 @@ Moc hoan thien:
 | 68 | Tao `POST /api/orders` | Tao order va order_items |
 | 69 | Luu design snapshot vao order item | Sua design sau checkout khong doi order cu |
 
+#### Nhom 8A: Editor full-screen luxury polish truoc AI
+
+Nhom nay lam truoc khi lam AI sau hon, vi AI patch/preview se can mot editor du chuyen nghiep de nguoi dung xem truoc va undo.
+
+| Buoc | Viec lam | Kiem thu |
+| --- | --- | --- |
+| 70A | Chuyen editor sang full-screen workspace | Vao `/editor/:designId` khong con cam giac trang form, canvas chiem viewport dung |
+| 70B | Doi left/right sidebar sang nen toi luxury | Desktop hien 2 panel toi, chu sang, khong mat contrast |
+| 70C | Toi uu center canvas cho card visit | Card nam giua workspace, co khoang trong rong, zoom/pan khong tran |
+| 70D | Chuyen toolbar/quick color bar sang dark floating UI | Toolbar noi tren canvas va quick color bar duoi khong che card |
+| 70E | Giu header/nav toi gian trong editor | Editor uu tien full man hinh, van co Back to drafts/Save/Checkout ro rang |
+| 70F | Responsive editor full-screen | Desktop/tablet/mobile khong tran ngang, control van bam duoc |
+
 #### Nhom 9: AI text, mau va JSON patch
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
 | 70 | Them env Gemini | Thieu key thi bao loi ro |
-| 71 | Tao `GeminiClient` backend | Prompt don gian co response |
-| 72 | Tao `ai_usage_logs` | Moi request AI co log |
-| 73 | Tao quota AI theo user/ngay | Vuot quota tra 429 |
-| 74 | Tao `POST /api/ai/text/rewrite` | Tra action `update_text` dung schema |
-| 75 | Validate `update_text` | Layer sai/text qua dai bi reject |
-| 76 | Tao `POST /api/ai/design/palette` | Tra palette JSON dung hex |
-| 77 | Preview va apply palette tren FE | Chua apply thi canvas chua doi |
-| 78 | Tao `POST /api/ai/design/patch` | Tra actions trong whitelist |
-| 79 | Preview AI patch | Reject thi canvas ve state cu |
-| 80 | Snapshot truoc AI patch | DB co `BEFORE_AI_PATCH` |
-| 81 | Apply AI patch | Save/load sau apply dung |
+| 71 | Tao `GeminiClient` backend test-safe | Mock/unit test pass; neu goi that thi response text don gian |
+| 72 | Tao `ai_usage_logs` | Moi request AI co log model/status/latency, khong log secret |
+| 73 | Tao DTO/schema JSON patch | JSON sai schema bi reject |
+| 74 | Validate whitelist action AI | Action la, layer sai, add/remove khong duoc lenh ro thi bi reject |
+| 75 | Tao `POST /api/ai/text/rewrite` | Tra action `update_text` dung schema |
+| 76 | Preview AI rewrite tren FE | Chua apply thi canvas chua doi, Apply/Reject hoat dong |
+| 77 | Tao `POST /api/ai/design/palette` | Tra palette JSON dung hex |
+| 78 | Preview va apply palette tren FE | Chua apply thi canvas chua doi, Apply moi doi canvas |
+| 79 | Tao `POST /api/ai/design/patch` | Tra actions trong whitelist theo `editStrength` user chon |
+| 80 | Preview AI patch | Reject thi canvas ve state cu, Undo van hoat dong |
+| 81 | Snapshot truoc AI patch | DB co snapshot truoc khi apply AI |
+| 82 | Apply AI patch | Save/load sau apply dung |
 
 #### Nhom 10: AI tao thiet ke tu y tuong
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
-| 82 | Dinh nghia JSON schema canvas AI | JSON sai schema bi reject |
-| 83 | Tao `POST /api/ai/design/generate` | Prompt tao duoc canvas editable |
-| 84 | Luu AI canvas thanh design moi | Mo editor va sua tiep duoc |
-| 85 | Upload anh mau de phan tich style | AI tra style summary |
-| 86 | Tao canvas theo style anh mau | Output van editable, khong phai anh phang |
+| 83 | Dinh nghia JSON schema canvas AI | JSON sai schema bi reject |
+| 84 | Tao `POST /api/ai/design/generate` | Prompt tao duoc canvas editable |
+| 85 | Luu AI canvas thanh design moi | Mo editor va sua tiep duoc |
+| 86 | Upload anh mau de phan tich style | AI tra style summary |
+| 87 | Tao canvas theo style anh mau | Output van editable, khong phai anh phang |
 
 #### Nhom 11: AI tim asset
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
-| 87 | Them tags/description cho asset | Search keyword ra asset dung |
-| 88 | Search asset basic theo text/tag | "spa vang" ra asset lien quan |
-| 89 | Cai `pgvector` neu can | Tao duoc cot vector |
-| 90 | Tao embedding cho asset | Luu vector vao DB |
-| 91 | Search asset bang embedding | Mo ta mo ho van ra asset hop ly |
+| 88 | Them tags/description cho asset | Search keyword ra asset dung |
+| 89 | Search asset basic theo text/tag | "spa vang" ra asset lien quan |
+| 90 | Cai `pgvector` neu can | Tao duoc cot vector |
+| 91 | Tao embedding cho asset | Luu vector vao DB |
+| 92 | Search asset bang embedding | Mo ta mo ho van ra asset hop ly |
 
 #### Nhom 12: AI xoa phong
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
-| 92 | Tao `POST /api/ai/images/remove-background` | Upload anh tra ve job/result |
-| 93 | Luu anh goc | `original_file_url` van ton tai |
-| 94 | Goi image model xoa nen | Co processed image |
-| 95 | Luu anh da xu ly | FE hien anh da xoa phong |
-| 96 | Fallback khi xu ly loi | Loi AI khong lam mat anh goc |
+| 93 | Tao `POST /api/ai/images/remove-background` | Upload anh tra ve job/result |
+| 94 | Luu anh goc | `original_file_url` van ton tai |
+| 95 | Goi image model xoa nen | Co processed image |
+| 96 | Luu anh da xu ly | FE hien anh da xoa phong |
+| 97 | Fallback khi xu ly loi | Loi AI khong lam mat anh goc |
 
 #### Nhom 13: Deploy cloud
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
-| 97 | Tao Dockerfile backend | Build image thanh cong |
-| 98 | Cau hinh env prod backend | Khong co secret trong repo |
-| 99 | Deploy backend | `/api/health` cloud tra 200 |
-| 100 | Build frontend production | `npm run build` pass |
-| 101 | Deploy frontend Cloudflare Pages | FE cloud mo duoc |
-| 102 | Ket noi DB cloud | Migration chay tren cloud DB |
-| 103 | Smoke test production | Template -> design -> save -> AI text -> checkout chay duoc |
+| 98 | Tao Dockerfile backend | Build image thanh cong |
+| 99 | Cau hinh env prod backend | Khong co secret trong repo |
+| 100 | Deploy backend | `/api/health` cloud tra 200 |
+| 101 | Build frontend production | `npm run build` pass |
+| 102 | Deploy frontend Cloudflare Pages | FE cloud mo duoc |
+| 103 | Ket noi DB cloud | Migration chay tren cloud DB |
+| 104 | Smoke test production | Template -> design -> save -> AI text -> checkout chay duoc |
 
 #### Nhom 14: Checklist bao mat
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
-| 104 | Chong SQL Injection | Tat ca query dung parameter/JPA |
-| 105 | Chong XSS | Nhap `<script>` khong chay tren FE |
-| 106 | CSRF neu dung cookie session | Request ghi du lieu khong hop le bi chan |
-| 107 | Chong IDOR | User A khong doc/sua data user B |
-| 108 | Rate limit login/upload/AI | Spam request bi 429 |
-| 109 | Secret scan truoc commit | Staged files khong co API key/token/password |
+| 105 | Chong SQL Injection | Tat ca query dung parameter/JPA |
+| 106 | Chong XSS | Nhap `<script>` khong chay tren FE |
+| 107 | CSRF neu dung cookie session | Request ghi du lieu khong hop le bi chan |
+| 108 | Chong IDOR | User A khong doc/sua data user B |
+| 109 | Rate limit login/upload/AI cho production | Spam request bi 429 khi bat production guard |
+| 110 | Secret scan truoc commit | Staged files khong co API key/token/password |
 
 ## 14. Rui ro ky thuat
 
