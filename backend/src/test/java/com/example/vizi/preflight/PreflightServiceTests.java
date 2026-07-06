@@ -97,4 +97,47 @@ class PreflightServiceTests {
         assertThat(report.valid()).isTrue();
         assertThat(report.issues()).isEmpty();
     }
+
+    @Test
+    void lowResolutionImageReturnsNonBlockingWarning() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"image\",\"x\":10,\"y\":10,\"width\":40,\"height\":40,"
+                        + "\"pixelWidth\":100,\"pixelHeight\":100}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.issues()).containsExactly(new PreflightIssue(
+                "WARNING",
+                "LOW_IMAGE_RESOLUTION",
+                "Image resolution is below 150 DPI at the current print size.",
+                0
+        ));
+    }
+
+    @Test
+    void sufficientImageResolutionPasses() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"image\",\"x\":10,\"y\":10,\"width\":40,\"height\":40,"
+                        + "\"pixelWidth\":1200,\"pixelHeight\":1200}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.issues()).isEmpty();
+    }
+
+    @Test
+    void imageWithoutPixelMetadataKeepsBackwardCompatibility() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"image\",\"x\":10,\"y\":10,\"width\":40,\"height\":40}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.issues()).isEmpty();
+    }
 }

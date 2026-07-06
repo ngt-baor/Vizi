@@ -69,6 +69,8 @@ const assetPreviewName = ref("");
 const assetPreviewSize = ref("");
 const assetPreviewError = ref("");
 const assetPreviewFile = ref<File | null>(null);
+const assetPreviewPixelWidth = ref(0);
+const assetPreviewPixelHeight = ref(0);
 const assetUploading = ref(false);
 const qrText = ref("https://vizi.local/card");
 const qrPreviewUrl = ref("");
@@ -346,6 +348,8 @@ function revokeAssetPreview(): void {
   assetPreviewName.value = "";
   assetPreviewSize.value = "";
   assetPreviewFile.value = null;
+  assetPreviewPixelWidth.value = 0;
+  assetPreviewPixelHeight.value = 0;
 }
 
 function formatBytes(bytes: number): string {
@@ -385,6 +389,12 @@ function clearAssetPreview(): void {
   assetPreviewError.value = "";
 }
 
+function captureAssetDimensions(event: Event): void {
+  const image = event.target as HTMLImageElement;
+  assetPreviewPixelWidth.value = image.naturalWidth;
+  assetPreviewPixelHeight.value = image.naturalHeight;
+}
+
 function backendAssetUrl(url: string): string {
   return url.startsWith("/") ? `${apiBaseUrl}${url}` : url;
 }
@@ -408,6 +418,8 @@ async function addPreviewAssetToCanvas(): Promise<void> {
       width: 32,
       height: 32,
       opacity: 1,
+      pixelWidth: assetPreviewPixelWidth.value,
+      pixelHeight: assetPreviewPixelHeight.value,
     };
     const layers = [...editableLayers.value, layer];
     commitLayers(layers, [layers.length - 1]);
@@ -1246,14 +1258,19 @@ onUnmounted(() => {
               {{ assetPreviewError }}
             </p>
             <figure v-if="assetPreviewUrl" class="editor-asset-preview">
-              <img :src="assetPreviewUrl" :alt="assetPreviewName">
+              <img :src="assetPreviewUrl" :alt="assetPreviewName" @load="captureAssetDimensions">
               <figcaption>
                 <strong>{{ assetPreviewName }}</strong>
                 <span>{{ assetPreviewSize }}</span>
               </figcaption>
               <button
                 type="button"
-                :disabled="assetUploading || selectedPage !== 'front'"
+                :disabled="
+                  assetUploading
+                    || selectedPage !== 'front'
+                    || assetPreviewPixelWidth <= 0
+                    || assetPreviewPixelHeight <= 0
+                "
                 @click="addPreviewAssetToCanvas"
               >
                 {{ assetUploading ? "Uploading..." : "Add to canvas" }}

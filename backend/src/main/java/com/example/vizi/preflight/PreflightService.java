@@ -12,6 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 public class PreflightService {
 
     private static final double SAFE_ZONE_MM = 3;
+    private static final double MINIMUM_IMAGE_DPI = 150;
 
     private final ObjectMapper objectMapper;
 
@@ -41,6 +42,7 @@ public class PreflightService {
             }
             var issues = new ArrayList<PreflightIssue>();
             addSafeZoneIssues(layers, widthMm, heightMm, issues);
+            addImageResolutionIssues(layers, widthMm, heightMm, issues);
             return new PreflightReport(
                     issues.stream().noneMatch(issue -> issue.level().equals("ERROR")),
                     List.copyOf(issues)
@@ -116,6 +118,46 @@ public class PreflightService {
                 && y <= 0
                 && x + width >= 100
                 && y + height >= 100;
+    }
+
+    private static void addImageResolutionIssues(
+            JsonNode layers,
+            double widthMm,
+            double heightMm,
+            List<PreflightIssue> issues
+    ) {
+        if (widthMm <= 0 || heightMm <= 0) {
+            return;
+        }
+
+        for (int index = 0; index < layers.size(); index++) {
+            var layer = layers.get(index);
+            if (!layer.isObject() || !text(layer, "type", "").equals("image")) {
+                continue;
+            }
+            var pixelWidth = number(layer, "pixelWidth", 0);
+            var pixelHeight = number(layer, "pixelHeight", 0);
+            var layerWidth = number(layer, "width", 32);
+            var layerHeight = number(layer, "height", 26);
+            if (pixelWidth <= 0 || pixelHeight <= 0 || layerWidth <= 0 || layerHeight <= 0) {
+                continue;
+            }
+
+            var printWidthInches = widthMm * layerWidth / 100 / 25.4;
+            var printHeightInches = heightMm * layerHeight / 100 / 25.4;
+            var effectiveDpi = Math.min(
+                    pixelWidth / printWidthInches,
+                    pixelHeight / printHeightInches
+            );
+            if (effectiveDpi < MINIMUM_IMAGE_DPI) {
+                issues.add(new PreflightIssue(
+                        "WARNING",
+                        "LOW_IMAGE_RESOLUTION",
+                        "Image resolution is below 150 DPI at the current print size.",
+                        index
+                ));
+            }
+        }
     }
 
     private static double number(JsonNode node, String field, double fallback) {
