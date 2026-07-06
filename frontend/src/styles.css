@@ -369,12 +369,36 @@ h2 {
 
 .editor-layer-list li {
   min-width: 0;
+}
+
+.editor-layer-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   border: 1px solid rgba(122, 93, 46, 0.14);
+  border-radius: 6px;
+  background: #fffdf8;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
   padding: 9px;
+  text-align: left;
+}
+
+.editor-layer-button:hover,
+.editor-layer-button.active {
+  border-color: rgba(168, 127, 51, 0.38);
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(93, 69, 33, 0.08);
+}
+
+.editor-layer-button:focus-visible {
+  outline: 3px solid rgba(168, 127, 51, 0.28);
+  outline-offset: 2px;
 }
 
 .editor-layer-list span {
@@ -619,6 +643,12 @@ h2 {
   place-items: center start;
   padding: 0;
   text-align: left;
+}
+
+.canvas-layer--selected {
+  outline: 3px solid rgba(168, 127, 51, 0.66);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 1px #fff;
 }
 
 .canvas-layer--rect,

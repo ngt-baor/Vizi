@@ -140,6 +140,11 @@ function selectTool(tool: EditorTool): void {
   saveMessage.value = "";
 }
 
+function selectLayer(index: number): void {
+  selectedLayerIndex.value = index;
+  saveMessage.value = "";
+}
+
 function applyQuickColor(color: string): void {
   if (selectedPage.value !== "front") {
     return;
@@ -265,8 +270,17 @@ onMounted(async () => {
             <h2>Layers</h2>
             <ol class="editor-layer-list">
               <li v-for="(layer, index) in displayedCanvasLayers" :key="index">
-                <span>{{ index + 1 }}</span>
-                <strong>{{ layer.type || "Layer" }}</strong>
+                <button
+                  type="button"
+                  class="editor-layer-button"
+                  :class="{ active: selectedLayerIndex === index }"
+                  :aria-pressed="selectedLayerIndex === index"
+                  :aria-label="`Select layer ${index + 1} ${layer.type || 'Layer'}`"
+                  @click="selectLayer(index)"
+                >
+                  <span>{{ index + 1 }}</span>
+                  <strong>{{ layer.type || "Layer" }}</strong>
+                </button>
               </li>
             </ol>
             <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
@@ -299,6 +313,7 @@ onMounted(async () => {
             :height-mm="design.heightMm"
             label="Draft canvas preview"
             :empty-label="selectedPageLabel"
+            :selected-layer-index="selectedLayerIndex"
           />
           <div class="editor-color-bar" aria-label="Quick colors">
             <div class="editor-color-targets" aria-label="Color target">

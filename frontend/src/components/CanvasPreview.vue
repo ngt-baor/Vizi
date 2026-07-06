@@ -11,6 +11,7 @@ const props = defineProps<{
   heightMm: number;
   label: string;
   emptyLabel: string;
+  selectedLayerIndex?: number | null;
 }>();
 
 const frameStyle = computed(() => ({
@@ -87,7 +88,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
       v-for="(layer, index) in layers"
       :key="index"
       class="canvas-layer"
-      :class="layerClass(layer)"
+      :class="[layerClass(layer), { 'canvas-layer--selected': index === selectedLayerIndex }]"
       :style="layerStyle(layer)"
     >
       <img
