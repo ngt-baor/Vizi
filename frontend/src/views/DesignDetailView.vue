@@ -17,6 +17,7 @@ import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { deleteDesign, getDesign, updateDesign, type DesignDetail } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
+import { localFonts } from "../generated/localFonts";
 
 type CanvasLayer = Record<string, unknown> & {
   type?: string;
@@ -58,12 +59,16 @@ const colorTargets: { id: ColorTarget; label: string }[] = [
   { id: "stroke", label: "Stroke" },
 ];
 const recentColors = ["#B1B2B5", "#2F281C", "#A87F33", "#5F7344", "#A5382F", "#FFFFFF"];
-const fontFamilyOptions = [
+const systemFontFamilyOptions = [
   "inherit",
   "Arial",
   "Georgia",
   "Times New Roman",
   "Trebuchet MS",
+];
+const fontFamilyOptions = [
+  ...systemFontFamilyOptions,
+  ...localFonts.map((font) => font.family),
 ];
 const fontWeightOptions = [300, 400, 500, 600, 700, 800, 900];
 
@@ -404,6 +409,12 @@ function selectedLayerNumber(field: string, fallback: number): number {
   return layer ? numberValue(layer[field], fallback) : fallback;
 }
 
+function selectedLayerPercent(field: string, fallback: number): number {
+  const layer = selectedLayer.value;
+  const value = layer ? numberValue(layer[field], fallback / 100) : fallback / 100;
+  return Math.round(clamp(value, 0, 1) * 100);
+}
+
 function layerDefaultSize(layer: CanvasLayer, field: "width" | "height"): number {
   if (field === "width") {
     return layer.type === "text" ? 45 : 32;
@@ -443,6 +454,11 @@ function updateSelectedLayerNumber(field: "x" | "y" | "width" | "height" | "rota
 function selectedLayerString(field: string, fallback: string): string {
   const layer = selectedLayer.value;
   return layer ? optionalString(layer[field]) ?? fallback : fallback;
+}
+
+function selectedLayerHexColor(field: string, fallback: string): string {
+  const value = selectedLayerString(field, fallback);
+  return /^#[\da-f]{6}$/i.test(value) ? value : fallback;
 }
 
 function selectedLayerColor(target: ColorTarget): string {
@@ -525,7 +541,7 @@ function updateSelectedEffectColor(event: Event): void {
 }
 
 function updateSelectedEffectNumber(
-  field: "shadowX" | "shadowY" | "shadowBlur" | "blur",
+  field: "shadowX" | "shadowY" | "shadowBlur" | "shadowSpread" | "blur",
   event: Event,
 ): void {
   const layer = selectedLayer.value;
@@ -539,6 +555,20 @@ function updateSelectedEffectNumber(
     [field]: field === "shadowX" || field === "shadowY"
       ? Math.round(clamp(value, -50, 50) * 100) / 100
       : Math.round(clamp(value, 0, 50) * 100) / 100,
+  };
+  saveMessage.value = "";
+}
+
+function updateSelectedShadowOpacity(event: Event): void {
+  const layer = selectedLayer.value;
+  const value = (event.target as HTMLInputElement).valueAsNumber;
+  if (!layer || !Number.isFinite(value) || !selectedLayerCanEditAppearance.value) {
+    return;
+  }
+
+  editableLayers.value[selectedLayerIndex.value] = {
+    ...layer,
+    shadowOpacity: Math.round(clamp(value, 0, 100)) / 100,
   };
   saveMessage.value = "";
 }
@@ -892,7 +922,7 @@ onMounted(async () => {
               aria-label="Selected layer geometry"
             >
               <label>
-                <span>X</span>
+                <span>X %</span>
                 <input
                   type="number"
                   min="0"
@@ -905,7 +935,7 @@ onMounted(async () => {
                 />
               </label>
               <label>
-                <span>Y</span>
+                <span>Y %</span>
                 <input
                   type="number"
                   min="0"
@@ -918,7 +948,7 @@ onMounted(async () => {
                 />
               </label>
               <label>
-                <span>W</span>
+                <span>W %</span>
                 <input
                   type="number"
                   min="3"
@@ -931,7 +961,7 @@ onMounted(async () => {
                 />
               </label>
               <label>
-                <span>H</span>
+                <span>H %</span>
                 <input
                   type="number"
                   min="3"
@@ -965,20 +995,16 @@ onMounted(async () => {
             >
               <label>
                 <span>Font</span>
-                <select
+                <input
+                  list="editor-font-options"
                   :value="selectedLayerString('fontFamily', 'inherit')"
                   :disabled="!selectedLayerCanEditText"
                   aria-label="Layer font family"
-                  @change="updateSelectedTextField('fontFamily', $event)"
-                >
-                  <option
-                    v-for="fontFamily in fontFamilyOptions"
-                    :key="fontFamily"
-                    :value="fontFamily"
-                  >
-                    {{ fontFamily }}
-                  </option>
-                </select>
+                  @input="updateSelectedTextField('fontFamily', $event)"
+                />
+                <datalist id="editor-font-options">
+                  <option v-for="fontFamily in fontFamilyOptions" :key="fontFamily" :value="fontFamily" />
+                </datalist>
               </label>
               <label>
                 <span>Size</span>
@@ -1110,13 +1136,39 @@ onMounted(async () => {
                 />
               </label>
               <label>
+                <span>Spread</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  step="1"
+                  :value="selectedLayerNumber('shadowSpread', 0)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer shadow spread"
+                  @input="updateSelectedEffectNumber('shadowSpread', $event)"
+                />
+              </label>
+              <label>
                 <span>Shadow Color</span>
                 <input
                   type="color"
-                  :value="selectedLayerString('shadowColor', '#000000')"
+                  :value="selectedLayerHexColor('shadowColor', '#000000')"
                   :disabled="!selectedLayerCanEditAppearance"
                   aria-label="Layer shadow color"
                   @input="updateSelectedEffectColor"
+                />
+              </label>
+              <label>
+                <span>Shadow %</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :value="selectedLayerPercent('shadowOpacity', 50)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer shadow opacity"
+                  @input="updateSelectedShadowOpacity"
                 />
               </label>
               <label>

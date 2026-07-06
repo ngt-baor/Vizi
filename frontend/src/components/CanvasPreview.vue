@@ -40,6 +40,15 @@ function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function colorWithOpacity(color: string, opacity: number): string {
+  const normalized = color.trim();
+  const hex = normalized.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
+  if (!hex) {
+    return normalized;
+  }
+  return `rgba(${Number.parseInt(hex[1], 16)}, ${Number.parseInt(hex[2], 16)}, ${Number.parseInt(hex[3], 16)}, ${opacity})`;
+}
+
 function optionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -83,8 +92,16 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const strokeWidth = numberValue(layer.strokeWidth, 1);
   const blur = numberValue(layer.blur, 0);
   const shadowBlur = numberValue(layer.shadowBlur, 0);
+  const shadowOpacity = Math.min(Math.max(numberValue(layer.shadowOpacity, 0.5), 0), 1);
+  const shadowColor = colorWithOpacity(
+    stringValue(layer.shadowColor, "#2f281c"),
+    shadowOpacity,
+  );
   const shadow = shadowBlur > 0
-    ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${stringValue(layer.shadowColor, "rgba(47,40,28,0.24)")}`
+    ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${numberValue(layer.shadowSpread, 0)}px ${shadowColor}`
+    : "none";
+  const textShadow = shadowBlur > 0
+    ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${shadowColor}`
     : "none";
 
   return {
@@ -105,7 +122,8 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
       : `${fontSize}px`,
     fontWeight: numberValue(layer.fontWeight, 700),
     opacity: numberValue(layer.opacity, 1),
-    boxShadow: shadow,
+    boxShadow: layer.type === "text" ? "none" : shadow,
+    textShadow: layer.type === "text" ? textShadow : "none",
     filter: blur > 0 ? `blur(${blur}px)` : "none",
     transform: `rotate(${numberValue(layer.rotation, 0)}deg)`,
     transformOrigin: "center center",
