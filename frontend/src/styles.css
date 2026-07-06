@@ -736,6 +736,31 @@ h2 {
   text-decoration: none;
 }
 
+@media (max-width: 900px) {
+  .editor-shell {
+    min-height: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .editor-sidebar--left,
+  .editor-sidebar--right {
+    border: 0;
+  }
+
+  .editor-sidebar--left {
+    border-bottom: 1px solid rgba(122, 93, 46, 0.16);
+  }
+
+  .editor-sidebar--right {
+    border-top: 1px solid rgba(122, 93, 46, 0.16);
+  }
+
+  .editor-workspace {
+    min-height: 360px;
+    padding-inline: 24px;
+  }
+}
+
 @media (max-width: 640px) {
   .app-shell {
     padding: 18px;
@@ -784,21 +809,7 @@ h2 {
   }
 
   .editor-shell {
-    min-height: 0;
     grid-template-columns: 1fr;
-  }
-
-  .editor-sidebar--left,
-  .editor-sidebar--right {
-    border: 0;
-  }
-
-  .editor-sidebar--left {
-    border-bottom: 1px solid rgba(122, 93, 46, 0.16);
-  }
-
-  .editor-sidebar--right {
-    border-top: 1px solid rgba(122, 93, 46, 0.16);
   }
 
   .editor-workspace {
