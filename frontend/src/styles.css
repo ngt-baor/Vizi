@@ -279,6 +279,7 @@ h2 {
 }
 
 .canvas-frame {
+  container-type: inline-size;
   position: relative;
   width: min(92%, 520px);
   overflow: hidden;
