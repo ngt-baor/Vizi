@@ -127,6 +127,7 @@ const selectedLayerCanEditText = computed(() => {
   const layer = selectedLayer.value;
   return selectedLayerCanEditGeometry.value && layer?.type === "text";
 });
+const selectedLayerCanEditAppearance = computed(() => selectedLayerCanEditGeometry.value);
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
     return `${selectedLayerIndexes.value.length} layers selected`;
@@ -444,6 +445,19 @@ function selectedLayerString(field: string, fallback: string): string {
   return layer ? optionalString(layer[field]) ?? fallback : fallback;
 }
 
+function selectedLayerColor(target: ColorTarget): string {
+  const layer = selectedLayer.value;
+  if (!layer) {
+    return target === "stroke" ? "#000000" : "#ffffff";
+  }
+  const value = target === "stroke"
+    ? optionalString(layer.stroke)
+    : optionalString(layer.type === "text" ? layer.color : layer.fill ?? layer.background);
+  return value && /^#[\da-f]{6}$/i.test(value)
+    ? value
+    : target === "stroke" ? "#000000" : "#ffffff";
+}
+
 function updateSelectedTextField(field: "fontFamily" | "fontSize" | "fontWeight", event: Event): void {
   const layer = selectedLayer.value;
   if (!layer || !selectedLayerCanEditText.value) {
@@ -463,6 +477,36 @@ function updateSelectedTextField(field: "fontFamily" | "fontSize" | "fontWeight"
     [field]: field === "fontSize"
       ? clamp(value as number, 6, 120)
       : field === "fontWeight" ? clamp(value as number, 100, 900) : value,
+  };
+  saveMessage.value = "";
+}
+
+function updateSelectedAppearanceColor(target: ColorTarget, event: Event): void {
+  const layer = selectedLayer.value;
+  if (!layer || !selectedLayerCanEditAppearance.value) {
+    return;
+  }
+
+  const value = (event.target as HTMLInputElement).value;
+  const field = target === "stroke"
+    ? "stroke"
+    : layer.type === "text" ? "color" : "fill";
+  editableLayers.value[selectedLayerIndex.value] = { ...layer, [field]: value };
+  saveMessage.value = "";
+}
+
+function updateSelectedAppearanceNumber(field: "opacity" | "strokeWidth", event: Event): void {
+  const layer = selectedLayer.value;
+  const value = (event.target as HTMLInputElement).valueAsNumber;
+  if (!layer || !Number.isFinite(value) || !selectedLayerCanEditAppearance.value) {
+    return;
+  }
+
+  editableLayers.value[selectedLayerIndex.value] = {
+    ...layer,
+    [field]: field === "opacity"
+      ? Math.round(clamp(value, 0, 1) * 100) / 100
+      : Math.round(clamp(value, 0, 20) * 100) / 100,
   };
   saveMessage.value = "";
 }
@@ -936,6 +980,59 @@ onMounted(async () => {
               </label>
             </div>
             <p v-else class="muted">Select a text layer to edit type.</p>
+            <div
+              v-if="selectedLayerIndexes.length === 1 && selectedLayer"
+              class="editor-appearance"
+              aria-label="Selected layer appearance"
+            >
+              <label>
+                <span>Fill</span>
+                <input
+                  type="color"
+                  :value="selectedLayerColor('fill')"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer fill color"
+                  @input="updateSelectedAppearanceColor('fill', $event)"
+                />
+              </label>
+              <label>
+                <span>Stroke</span>
+                <input
+                  type="color"
+                  :value="selectedLayerColor('stroke')"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer stroke color"
+                  @input="updateSelectedAppearanceColor('stroke', $event)"
+                />
+              </label>
+              <label>
+                <span>Opacity</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  :value="selectedLayerNumber('opacity', 1)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer opacity"
+                  @input="updateSelectedAppearanceNumber('opacity', $event)"
+                />
+              </label>
+              <label>
+                <span>Stroke W</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  step="0.5"
+                  :value="selectedLayerNumber('strokeWidth', 1)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer stroke width"
+                  @input="updateSelectedAppearanceNumber('strokeWidth', $event)"
+                />
+              </label>
+            </div>
+            <p v-else class="muted">Select one layer to edit appearance.</p>
           </section>
 
           <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
