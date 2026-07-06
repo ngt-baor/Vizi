@@ -58,6 +58,14 @@ const colorTargets: { id: ColorTarget; label: string }[] = [
   { id: "stroke", label: "Stroke" },
 ];
 const recentColors = ["#B1B2B5", "#2F281C", "#A87F33", "#5F7344", "#A5382F", "#FFFFFF"];
+const fontFamilyOptions = [
+  "inherit",
+  "Arial",
+  "Georgia",
+  "Times New Roman",
+  "Trebuchet MS",
+];
+const fontWeightOptions = [300, 400, 500, 600, 700, 800, 900];
 
 const designId = computed(() => {
   const value = route.params.designId ?? route.params.id;
@@ -114,6 +122,10 @@ const selectedLayerCanEditGeometry = computed(() => {
   return selectedPage.value === "front"
     && selectedLayerIndexes.value.length === 1
     && !layerIsLocked(layer);
+});
+const selectedLayerCanEditText = computed(() => {
+  const layer = selectedLayer.value;
+  return selectedLayerCanEditGeometry.value && layer?.type === "text";
 });
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
@@ -423,6 +435,34 @@ function updateSelectedLayerNumber(field: "x" | "y" | "width" | "height" | "rota
   editableLayers.value[selectedLayerIndex.value] = {
     ...layer,
     [field]: Math.round(nextValue * 100) / 100,
+  };
+  saveMessage.value = "";
+}
+
+function selectedLayerString(field: string, fallback: string): string {
+  const layer = selectedLayer.value;
+  return layer ? optionalString(layer[field]) ?? fallback : fallback;
+}
+
+function updateSelectedTextField(field: "fontFamily" | "fontSize" | "fontWeight", event: Event): void {
+  const layer = selectedLayer.value;
+  if (!layer || !selectedLayerCanEditText.value) {
+    return;
+  }
+
+  const target = event.target as HTMLInputElement | HTMLSelectElement;
+  const value = field === "fontFamily"
+    ? target.value
+    : Number.parseFloat(target.value);
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    return;
+  }
+
+  editableLayers.value[selectedLayerIndex.value] = {
+    ...layer,
+    [field]: field === "fontSize"
+      ? clamp(value as number, 6, 120)
+      : field === "fontWeight" ? clamp(value as number, 100, 900) : value,
   };
   saveMessage.value = "";
 }
@@ -842,6 +882,60 @@ onMounted(async () => {
               </label>
             </div>
             <p v-else class="muted">Select one layer to edit geometry.</p>
+            <div
+              v-if="selectedLayerIndexes.length === 1 && selectedLayer && selectedLayer.type === 'text'"
+              class="editor-text-style"
+              aria-label="Selected text style"
+            >
+              <label>
+                <span>Font</span>
+                <select
+                  :value="selectedLayerString('fontFamily', 'inherit')"
+                  :disabled="!selectedLayerCanEditText"
+                  aria-label="Layer font family"
+                  @change="updateSelectedTextField('fontFamily', $event)"
+                >
+                  <option
+                    v-for="fontFamily in fontFamilyOptions"
+                    :key="fontFamily"
+                    :value="fontFamily"
+                  >
+                    {{ fontFamily }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>Size</span>
+                <input
+                  type="number"
+                  min="6"
+                  max="120"
+                  step="1"
+                  :value="selectedLayerNumber('fontSize', 18)"
+                  :disabled="!selectedLayerCanEditText"
+                  aria-label="Layer font size"
+                  @input="updateSelectedTextField('fontSize', $event)"
+                />
+              </label>
+              <label>
+                <span>Weight</span>
+                <select
+                  :value="selectedLayerNumber('fontWeight', 700)"
+                  :disabled="!selectedLayerCanEditText"
+                  aria-label="Layer font weight"
+                  @change="updateSelectedTextField('fontWeight', $event)"
+                >
+                  <option
+                    v-for="fontWeight in fontWeightOptions"
+                    :key="fontWeight"
+                    :value="fontWeight"
+                  >
+                    {{ fontWeight }}
+                  </option>
+                </select>
+              </label>
+            </div>
+            <p v-else class="muted">Select a text layer to edit type.</p>
           </section>
 
           <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
