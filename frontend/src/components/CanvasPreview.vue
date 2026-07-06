@@ -15,6 +15,8 @@ const props = defineProps<{
 
 const frameStyle = computed(() => ({
   aspectRatio: `${props.widthMm} / ${props.heightMm}`,
+  "--canvas-width-mm": props.widthMm,
+  "--canvas-height-mm": props.heightMm,
 }));
 
 function numberValue(value: unknown, fallback: number): number {

@@ -454,7 +454,7 @@ h2 {
 }
 
 .editor-workspace .canvas-frame {
-  width: min(92%, 720px);
+  width: min(92%, calc(var(--canvas-width-mm, 90) * 8px));
 }
 
 .editor-properties {
