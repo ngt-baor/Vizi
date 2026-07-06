@@ -17,7 +17,7 @@ import {
   Type,
   Unlock,
 } from "@lucide/vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { deleteDesign, getDesign, updateDesign, type DesignDetail } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
@@ -290,6 +290,35 @@ function redoLayerChange(): void {
   redoLayerStack.value = redoLayerStack.value.slice(0, -1);
   undoLayerStack.value = [...undoLayerStack.value.slice(-49), cloneLayers(editableLayers.value)];
   restoreLayerState(next);
+}
+
+function targetAcceptsTextInput(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
+}
+
+function handleEditorShortcut(event: KeyboardEvent): void {
+  if (!isEditorRoute.value || targetAcceptsTextInput(event.target)) {
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+  const modifier = event.ctrlKey || event.metaKey;
+  if (modifier && key === "z") {
+    event.preventDefault();
+    event.shiftKey ? redoLayerChange() : undoLayerChange();
+  } else if (modifier && key === "y") {
+    event.preventDefault();
+    redoLayerChange();
+  } else if (modifier && key === "d") {
+    event.preventDefault();
+    duplicateSelectedLayers();
+  } else if (!modifier && event.key === "Delete") {
+    event.preventDefault();
+    deleteSelectedLayers();
+  }
 }
 
 function selectTool(tool: EditorTool): void {
@@ -803,6 +832,7 @@ async function deleteDraft(): Promise<void> {
 }
 
 onMounted(async () => {
+  window.addEventListener("keydown", handleEditorShortcut);
   if (!Number.isFinite(designId.value)) {
     error.value = "Draft id is invalid";
     loading.value = false;
@@ -819,6 +849,10 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener("keydown", handleEditorShortcut);
 });
 </script>
 
