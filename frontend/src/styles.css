@@ -681,6 +681,21 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.canvas-frame--interactive .canvas-layer {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.canvas-frame--interactive .canvas-layer:active {
+  cursor: grabbing;
+}
+
+.canvas-frame--interactive .canvas-layer:focus-visible {
+  outline: 3px solid rgba(168, 127, 51, 0.66);
+  outline-offset: 3px;
+}
+
 .canvas-layer--text {
   justify-items: start;
   place-items: center start;

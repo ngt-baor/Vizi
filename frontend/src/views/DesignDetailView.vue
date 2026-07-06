@@ -39,6 +39,7 @@ const saveError = ref("");
 const selectedPage = ref<EditorPage>("front");
 const activeTool = ref<EditorTool>("select");
 const selectedLayerIndex = ref(0);
+const selectedLayerIndexes = ref<number[]>([0]);
 const activeColorTarget = ref<ColorTarget>("fill");
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
@@ -81,9 +82,14 @@ const displayedCanvasLayers = computed<CanvasLayer[]>(() =>
 );
 const canvasLayerCount = computed(() => displayedCanvasLayers.value.length);
 const selectedLayer = computed<CanvasLayer | null>(
-  () => displayedCanvasLayers.value[selectedLayerIndex.value] ?? null,
+  () => selectedLayerIndexes.value.length > 0
+    ? displayedCanvasLayers.value[selectedLayerIndex.value] ?? null
+    : null,
 );
 const selectedLayerLabel = computed(() => {
+  if (selectedLayerIndexes.value.length > 1) {
+    return `${selectedLayerIndexes.value.length} layers selected`;
+  }
   const layer = selectedLayer.value;
   return layer ? `${selectedLayerIndex.value + 1}. ${optionalString(layer.type) ?? "Layer"}` : "No layer";
 });
@@ -165,9 +171,109 @@ function selectTool(tool: EditorTool): void {
   saveMessage.value = "";
 }
 
-function selectLayer(index: number): void {
-  selectedLayerIndex.value = index;
+function selectLayer(index: number, event?: MouseEvent | KeyboardEvent): void {
+  const additive = event?.shiftKey || event?.ctrlKey || event?.metaKey;
+  if (!additive) {
+    selectedLayerIndexes.value = [index];
+    selectedLayerIndex.value = index;
+  } else if (selectedLayerIndexes.value.includes(index)) {
+    selectedLayerIndexes.value = selectedLayerIndexes.value.filter((selected) => selected !== index);
+    selectedLayerIndex.value = selectedLayerIndexes.value[0] ?? index;
+  } else {
+    selectedLayerIndexes.value = [...selectedLayerIndexes.value, index].sort((left, right) => left - right);
+    selectedLayerIndex.value = index;
+  }
   saveMessage.value = "";
+}
+
+function clearLayerSelection(): void {
+  selectedLayerIndexes.value = [];
+  saveMessage.value = "";
+}
+
+function startLayerDrag(index: number, event: PointerEvent): void {
+  const wasSelected = selectedLayerIndexes.value.includes(index);
+  if (!wasSelected || event.shiftKey || event.ctrlKey || event.metaKey) {
+    selectLayer(index, event);
+  }
+  if (!selectedLayerIndexes.value.includes(index)) {
+    return;
+  }
+
+  const frame = (event.currentTarget as HTMLElement).closest<HTMLElement>(".canvas-frame");
+  if (!frame) {
+    return;
+  }
+  const movableIndexes = selectedLayerIndexes.value.filter((selected) => {
+    const layer = editableLayers.value[selected];
+    return layer && !layerIsLocked(layer);
+  });
+  if (movableIndexes.length === 0) {
+    return;
+  }
+
+  event.preventDefault();
+  const frameRect = frame.getBoundingClientRect();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startPositions = new Map(movableIndexes.map((selected) => {
+    const layer = editableLayers.value[selected];
+    return [selected, {
+      x: numberValue(layer.x, 8),
+      y: numberValue(layer.y, 8),
+      width: numberValue(layer.width, layer.type === "text" ? 45 : 32),
+      height: numberValue(layer.height, layer.type === "text" ? 16 : 26),
+    }];
+  }));
+  const positions = [...startPositions.values()];
+  const minimumDeltaX = Math.max(...positions.map((position) => -position.x));
+  const maximumDeltaX = Math.min(...positions.map((position) => 100 - position.width - position.x));
+  const minimumDeltaY = Math.max(...positions.map((position) => -position.y));
+  const maximumDeltaY = Math.min(...positions.map((position) => 100 - position.height - position.y));
+
+  const move = (moveEvent: PointerEvent) => {
+    const deltaX = clamp(
+      ((moveEvent.clientX - startX) / frameRect.width) * 100,
+      minimumDeltaX,
+      maximumDeltaX,
+    );
+    const deltaY = clamp(
+      ((moveEvent.clientY - startY) / frameRect.height) * 100,
+      minimumDeltaY,
+      maximumDeltaY,
+    );
+    const layers = [...editableLayers.value];
+    for (const selected of movableIndexes) {
+      const layer = layers[selected];
+      const start = startPositions.get(selected);
+      if (!layer || !start) {
+        continue;
+      }
+      layers[selected] = {
+        ...layer,
+        x: start.x + deltaX,
+        y: start.y + deltaY,
+      };
+    }
+    editableLayers.value = layers;
+    saveMessage.value = "";
+  };
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum);
 }
 
 function toggleLayerVisibility(index: number): void {
@@ -178,6 +284,7 @@ function toggleLayerVisibility(index: number): void {
 
   editableLayers.value[index] = { ...layer, visible: !layerIsVisible(layer) };
   selectedLayerIndex.value = index;
+  selectedLayerIndexes.value = [index];
   saveMessage.value = "";
 }
 
@@ -189,6 +296,7 @@ function toggleLayerLock(index: number): void {
 
   editableLayers.value[index] = { ...layer, locked: !layerIsLocked(layer) };
   selectedLayerIndex.value = index;
+  selectedLayerIndexes.value = [index];
   saveMessage.value = "";
 }
 
@@ -202,6 +310,9 @@ function moveLayer(index: number, direction: -1 | 1): void {
   [layers[index], layers[nextIndex]] = [layers[nextIndex], layers[index]];
   editableLayers.value = layers;
   selectedLayerIndex.value = nextIndex;
+  selectedLayerIndexes.value = selectedLayerIndexes.value
+    .map((selected) => selected === index ? nextIndex : selected === nextIndex ? index : selected)
+    .sort((left, right) => left - right);
   saveMessage.value = "";
 }
 
@@ -332,14 +443,14 @@ onMounted(async () => {
               <li v-for="(layer, index) in displayedCanvasLayers" :key="index">
                 <div
                   class="editor-layer-row"
-                  :class="{ active: selectedLayerIndex === index }"
+                  :class="{ active: selectedLayerIndexes.includes(index) }"
                 >
                   <button
                     type="button"
                     class="editor-layer-button"
-                    :aria-pressed="selectedLayerIndex === index"
+                    :aria-pressed="selectedLayerIndexes.includes(index)"
                     :aria-label="`Select layer ${index + 1} ${layer.type || 'Layer'}`"
-                    @click="selectLayer(index)"
+                    @click="selectLayer(index, $event)"
                   >
                     <span>{{ index + 1 }}</span>
                     <strong>{{ layer.type || "Layer" }}</strong>
@@ -407,7 +518,11 @@ onMounted(async () => {
           </section>
         </aside>
 
-        <section class="editor-workspace" aria-label="Card canvas workspace">
+        <section
+          class="editor-workspace"
+          aria-label="Card canvas workspace"
+          @pointerdown.self="clearLayerSelection"
+        >
           <div class="editor-toolbar" role="toolbar" aria-label="Canvas tools">
             <button
               v-for="tool in editorTools"
@@ -430,6 +545,11 @@ onMounted(async () => {
             label="Draft canvas preview"
             :empty-label="selectedPageLabel"
             :selected-layer-index="selectedLayerIndex"
+            :selected-layer-indexes="selectedLayerIndexes"
+            interactive
+            @canvas-pointerdown="clearLayerSelection"
+            @layer-pointerdown="startLayerDrag"
+            @layer-select="selectLayer"
           />
           <div class="editor-color-bar" aria-label="Quick colors">
             <div class="editor-color-targets" aria-label="Color target">
@@ -485,6 +605,10 @@ onMounted(async () => {
               <div>
                 <dt>Layers</dt>
                 <dd>{{ canvasLayerCount }}</dd>
+              </div>
+              <div>
+                <dt>Selected</dt>
+                <dd>{{ selectedLayerIndexes.length }}</dd>
               </div>
               <div>
                 <dt>Locked</dt>

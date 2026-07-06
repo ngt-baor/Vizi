@@ -12,6 +12,14 @@ const props = defineProps<{
   label: string;
   emptyLabel: string;
   selectedLayerIndex?: number | null;
+  selectedLayerIndexes?: number[];
+  interactive?: boolean;
+}>();
+
+const emit = defineEmits<{
+  canvasPointerdown: [event: PointerEvent];
+  layerPointerdown: [index: number, event: PointerEvent];
+  layerSelect: [index: number, event: KeyboardEvent];
 }>();
 
 const frameStyle = computed(() => ({
@@ -55,6 +63,12 @@ function layerIsVisible(layer: CanvasLayer): boolean {
   return layer.visible !== false && layer.hidden !== true;
 }
 
+function layerIsSelected(index: number): boolean {
+  return props.selectedLayerIndexes
+    ? props.selectedLayerIndexes.includes(index)
+    : index === props.selectedLayerIndex;
+}
+
 function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const x = numberValue(layer.x, 8);
   const y = numberValue(layer.y, 8);
@@ -87,13 +101,25 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
 </script>
 
 <template>
-  <div class="canvas-frame" :style="frameStyle" :aria-label="label">
+  <div
+    class="canvas-frame"
+    :class="{ 'canvas-frame--interactive': interactive }"
+    :style="frameStyle"
+    :aria-label="label"
+    @pointerdown.self="emit('canvasPointerdown', $event)"
+  >
     <template v-for="(layer, index) in layers" :key="index">
       <div
         v-if="layerIsVisible(layer)"
         class="canvas-layer"
-        :class="[layerClass(layer), { 'canvas-layer--selected': index === selectedLayerIndex }]"
+        :class="[layerClass(layer), { 'canvas-layer--selected': layerIsSelected(index) }]"
         :style="layerStyle(layer)"
+        :role="interactive ? 'button' : undefined"
+        :tabindex="interactive ? 0 : undefined"
+        :aria-label="interactive ? `Select layer ${index + 1} ${layer.type || 'Layer'}` : undefined"
+        @pointerdown.stop="interactive && emit('layerPointerdown', index, $event)"
+        @keydown.enter.prevent="interactive && emit('layerSelect', index, $event)"
+        @keydown.space.prevent="interactive && emit('layerSelect', index, $event)"
       >
         <img
           v-if="layer.type === 'image' && layerImageSource(layer)"
