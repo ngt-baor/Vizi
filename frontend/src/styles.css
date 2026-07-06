@@ -397,7 +397,7 @@ h2 {
   min-width: 0;
   display: grid;
   place-items: center;
-  padding: 92px 40px 40px;
+  padding: 92px 40px 94px;
   background:
     linear-gradient(rgba(122, 93, 46, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(122, 93, 46, 0.05) 1px, transparent 1px),
@@ -461,6 +461,93 @@ h2 {
 
 .editor-workspace .canvas-frame {
   width: min(92%, calc(var(--canvas-width-mm, 90) * 8px));
+}
+
+.editor-color-bar {
+  position: absolute;
+  z-index: 2;
+  bottom: 18px;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  border: 1px solid rgba(122, 93, 46, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 6px;
+  box-shadow: 0 14px 34px rgba(93, 69, 33, 0.14);
+  transform: translateX(-50%);
+}
+
+.editor-color-targets {
+  display: flex;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: #f4efe5;
+  padding: 3px;
+}
+
+.editor-color-targets button {
+  min-width: 58px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #665a48;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.editor-color-targets button.active {
+  background: #2f281c;
+  color: #fffaf0;
+}
+
+.editor-color-swatches {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.editor-color-swatch {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px rgba(122, 93, 46, 0.2);
+  cursor: pointer;
+}
+
+.editor-color-swatch.active {
+  box-shadow:
+    0 0 0 2px #2f281c,
+    0 0 0 5px rgba(168, 127, 51, 0.22);
+}
+
+.editor-color-swatch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.editor-color-swatch:focus-visible,
+.editor-color-targets button:focus-visible {
+  outline: 3px solid rgba(168, 127, 51, 0.25);
+  outline-offset: 2px;
+}
+
+.editor-color-value {
+  flex: 0 0 auto;
+  color: #655a4b;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .editor-properties {
@@ -820,7 +907,7 @@ h2 {
 
   .editor-workspace {
     min-height: 340px;
-    padding: 82px 16px 24px;
+    padding: 82px 16px 84px;
   }
 
   .editor-toolbar {
@@ -836,5 +923,13 @@ h2 {
 
   .editor-toolbar span {
     font-size: 9px;
+  }
+
+  .editor-color-bar {
+    bottom: 10px;
+  }
+
+  .editor-color-targets button {
+    min-width: 52px;
   }
 }

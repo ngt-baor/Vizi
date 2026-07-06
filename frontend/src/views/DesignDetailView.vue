@@ -10,6 +10,7 @@ type CanvasLayer = Record<string, unknown> & {
 };
 type EditorPage = "front" | "back";
 type EditorTool = "select" | "text" | "shape" | "image" | "qr" | "icon";
+type ColorTarget = "fill" | "stroke";
 
 const route = useRoute();
 const router = useRouter();
@@ -24,6 +25,8 @@ const saveMessage = ref("");
 const saveError = ref("");
 const selectedPage = ref<EditorPage>("front");
 const activeTool = ref<EditorTool>("select");
+const selectedLayerIndex = ref(0);
+const activeColorTarget = ref<ColorTarget>("fill");
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
@@ -36,6 +39,11 @@ const editorTools: { id: EditorTool; label: string; icon: typeof MousePointer2 }
   { id: "qr", label: "QR", icon: QrCode },
   { id: "icon", label: "Icon", icon: Sticker },
 ];
+const colorTargets: { id: ColorTarget; label: string }[] = [
+  { id: "fill", label: "Fill" },
+  { id: "stroke", label: "Stroke" },
+];
+const recentColors = ["#B1B2B5", "#2F281C", "#A87F33", "#5F7344", "#A5382F", "#FFFFFF"];
 
 const designId = computed(() => {
   const value = route.params.designId ?? route.params.id;
@@ -49,6 +57,9 @@ const selectedPageLabel = computed(() =>
 const activeToolLabel = computed(() =>
   editorTools.find((tool) => tool.id === activeTool.value)?.label ?? "Select",
 );
+const activeColorTargetLabel = computed(() =>
+  colorTargets.find((target) => target.id === activeColorTarget.value)?.label ?? "Fill",
+);
 const editorCanvasLayers = computed<CanvasLayer[]>(() =>
   selectedPage.value === "front" ? canvasLayers.value : [],
 );
@@ -56,6 +67,23 @@ const displayedCanvasLayers = computed<CanvasLayer[]>(() =>
   isEditorRoute.value ? editorCanvasLayers.value : canvasLayers.value,
 );
 const canvasLayerCount = computed(() => displayedCanvasLayers.value.length);
+const selectedLayer = computed<CanvasLayer | null>(
+  () => displayedCanvasLayers.value[selectedLayerIndex.value] ?? null,
+);
+const selectedLayerLabel = computed(() => {
+  const layer = selectedLayer.value;
+  return layer ? `${selectedLayerIndex.value + 1}. ${optionalString(layer.type) ?? "Layer"}` : "No layer";
+});
+const activeColorValue = computed(() => {
+  const layer = selectedLayer.value;
+  if (!layer) {
+    return "";
+  }
+  if (activeColorTarget.value === "stroke") {
+    return optionalString(layer.stroke) ?? "";
+  }
+  return optionalString(layer.type === "text" ? layer.color : layer.fill ?? layer.background) ?? "";
+});
 const firstTextLayerIndex = computed(() =>
   displayedCanvasLayers.value.findIndex((layer) => layer.type === "text"),
 );
@@ -109,6 +137,22 @@ function serializeCanvas(): string {
 
 function selectTool(tool: EditorTool): void {
   activeTool.value = tool;
+  saveMessage.value = "";
+}
+
+function applyQuickColor(color: string): void {
+  if (selectedPage.value !== "front") {
+    return;
+  }
+  const layer = editableLayers.value[selectedLayerIndex.value];
+  if (!layer) {
+    return;
+  }
+
+  const field = activeColorTarget.value === "stroke"
+    ? "stroke"
+    : layer.type === "text" ? "color" : "fill";
+  editableLayers.value[selectedLayerIndex.value] = { ...layer, [field]: color };
   saveMessage.value = "";
 }
 
@@ -256,6 +300,35 @@ onMounted(async () => {
             label="Draft canvas preview"
             :empty-label="selectedPageLabel"
           />
+          <div class="editor-color-bar" aria-label="Quick colors">
+            <div class="editor-color-targets" aria-label="Color target">
+              <button
+                v-for="target in colorTargets"
+                :key="target.id"
+                type="button"
+                :class="{ active: activeColorTarget === target.id }"
+                :aria-pressed="activeColorTarget === target.id"
+                @click="activeColorTarget = target.id"
+              >
+                {{ target.label }}
+              </button>
+            </div>
+            <div class="editor-color-swatches" aria-label="Recent colors">
+              <button
+                v-for="color in recentColors"
+                :key="color"
+                type="button"
+                class="editor-color-swatch"
+                :class="{ active: activeColorValue.toUpperCase() === color }"
+                :style="{ '--swatch-color': color }"
+                :aria-label="`Apply ${color} to ${activeColorTargetLabel}`"
+                :title="`${activeColorTargetLabel}: ${color}`"
+                :disabled="!selectedLayer"
+                @click="applyQuickColor(color)"
+              />
+            </div>
+            <span class="editor-color-value">{{ selectedLayerLabel }}</span>
+          </div>
         </section>
 
         <aside class="editor-sidebar editor-sidebar--right" aria-label="Properties panel">
@@ -273,6 +346,10 @@ onMounted(async () => {
               <div>
                 <dt>Tool</dt>
                 <dd>{{ activeToolLabel }}</dd>
+              </div>
+              <div>
+                <dt>Color</dt>
+                <dd>{{ activeColorTargetLabel }}</dd>
               </div>
               <div>
                 <dt>Layers</dt>

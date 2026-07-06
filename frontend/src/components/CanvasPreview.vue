@@ -56,6 +56,8 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const width = numberValue(layer.width, layer.type === "text" ? 45 : 32);
   const height = numberValue(layer.height, layer.type === "text" ? 16 : 26);
   const fontSize = numberValue(layer.fontSize, 14);
+  const stroke = stringValue(layer.stroke, "rgba(122, 93, 46, 0.18)");
+  const strokeWidth = numberValue(layer.strokeWidth, 1);
 
   return {
     left: `${x}%`,
@@ -67,6 +69,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
       layer.fill ?? layer.background,
       layer.type === "text" ? "transparent" : "rgba(255,255,255,0.72)",
     ),
+    border: layer.type === "text" ? "0" : `${strokeWidth}px solid ${stroke}`,
     borderRadius: `${numberValue(layer.radius, 10)}px`,
     fontFamily: stringValue(layer.fontFamily, "inherit"),
     fontSize: layer.type === "text"
