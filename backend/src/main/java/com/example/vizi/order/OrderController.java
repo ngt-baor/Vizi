@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,5 +29,10 @@ class OrderController {
             Authentication authentication
     ) {
         return orderService.createOrder(request, authentication.getName());
+    }
+
+    @GetMapping("/{orderId}")
+    OrderResponse getOrder(@PathVariable Long orderId, Authentication authentication) {
+        return orderService.getOwnedOrder(orderId, authentication.getName());
     }
 }

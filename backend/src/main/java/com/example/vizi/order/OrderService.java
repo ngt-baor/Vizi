@@ -69,6 +69,14 @@ class OrderService {
         return OrderResponse.from(orderRepository.save(order));
     }
 
+    @Transactional(readOnly = true)
+    OrderResponse getOwnedOrder(Long orderId, String email) {
+        var user = authService.requireUser(email);
+        return orderRepository.findByIdAndUser_Id(orderId, user.id())
+                .map(OrderResponse::from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+    }
+
     private static BigDecimal calculateTotal(int quantity, PaperOption paper, boolean roundedCorners) {
         var batches = BigDecimal.valueOf(quantity).divide(BigDecimal.valueOf(100), 0, RoundingMode.UP);
         var total = paper.pricePer100().multiply(batches);

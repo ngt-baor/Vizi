@@ -3,6 +3,7 @@ package com.example.vizi.order;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -161,6 +162,56 @@ class OrderApiIntegrationTests {
                 String.class,
                 orderId.longValue()
         )).isEqualTo("54.00");
+    }
+
+    @Test
+    void ownerCanReadCreatedOrderAndOtherUserCannot() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        userRepository.save(new User("other@example.test", "test-hash", "Other"));
+        var template = templateRepository.save(new Template(
+                "Readable Order Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[{\"type\":\"text\",\"text\":\"Readable\"}]}",
+                true
+        ));
+        var createDesignResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createDesignResponse.getResponse().getContentAsString(), "$.id");
+
+        var createOrderResponse = mockMvc.perform(post("/api/orders")
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "silk-400",
+                                  "quantity": 200,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(designId.longValue())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number orderId = JsonPath.read(createOrderResponse.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(get("/api/orders/" + orderId.longValue())
+                        .with(user("owner@example.test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(orderId.longValue()))
+                .andExpect(jsonPath("$.status").value("PENDING_PAYMENT"))
+                .andExpect(jsonPath("$.totalAmount").value(480000.00))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].quantity").value(200));
+
+        mockMvc.perform(get("/api/orders/" + orderId.longValue())
+                        .with(user("other@example.test")))
+                .andExpect(status().isNotFound());
     }
 
     @Test

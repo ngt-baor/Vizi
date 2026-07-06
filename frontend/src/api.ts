@@ -44,6 +44,19 @@ export type ImageUploadResponse = {
   url: string;
 };
 
+export type OrderItemResponse = {
+  id: number;
+  quantity: number;
+  subtotal: number;
+};
+
+export type OrderResponse = {
+  id: number;
+  status: string;
+  totalAmount: number;
+  items: OrderItemResponse[];
+};
+
 type CsrfResponse = {
   headerName: string;
   token: string;
@@ -261,6 +274,42 @@ export async function uploadImageAsset(file: File): Promise<ImageUploadResponse>
   }
 
   return response.json() as Promise<ImageUploadResponse>;
+}
+
+export async function createOrder(
+  designId: number,
+  paper: string,
+  quantity: number,
+  roundedCorners: boolean,
+): Promise<OrderResponse> {
+  const response = await writeWithCsrf(
+    "/api/orders",
+    "POST",
+    JSON.stringify({ designId, paper, quantity, roundedCorners }),
+    "application/json",
+  );
+  if (response.status === 401) {
+    throw new Error("Sign in to create your order");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Create order failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<OrderResponse>;
+}
+
+export async function getOrder(orderId: number): Promise<OrderResponse> {
+  const response = await fetch(`${apiBaseUrl}/api/orders/${orderId}`, {
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    throw new Error("Sign in to view your order");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Order detail failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<OrderResponse>;
 }
 
 export { apiBaseUrl };

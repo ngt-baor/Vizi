@@ -1319,6 +1319,36 @@ h2 {
   text-align: right;
 }
 
+.order-success-panel {
+  display: grid;
+  gap: 20px;
+  border: 1px solid rgba(122, 93, 46, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 24px 70px rgba(93, 69, 33, 0.1);
+  padding: clamp(20px, 4vw, 32px);
+}
+
+.order-items {
+  display: grid;
+  gap: 10px;
+}
+
+.order-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+  border-top: 1px solid rgba(122, 93, 46, 0.14);
+  padding-top: 12px;
+  color: #4d4437;
+  font-size: 14px;
+}
+
+.order-item strong {
+  color: #2f281c;
+}
+
 .detail-actions {
   display: flex;
   flex-wrap: wrap;

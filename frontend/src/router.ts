@@ -4,6 +4,7 @@ import AccountView from "./views/AccountView.vue";
 import CheckoutView from "./views/CheckoutView.vue";
 import DesignDetailView from "./views/DesignDetailView.vue";
 import DesignsView from "./views/DesignsView.vue";
+import OrderDetailView from "./views/OrderDetailView.vue";
 import TemplateDetailView from "./views/TemplateDetailView.vue";
 import TemplatesView from "./views/TemplatesView.vue";
 
@@ -39,6 +40,11 @@ export const router = createRouter({
       path: "/checkout/:designId",
       name: "checkout",
       component: CheckoutView,
+    },
+    {
+      path: "/orders/:orderId",
+      name: "order-detail",
+      component: OrderDetailView,
     },
     {
       path: "/designs/:id",

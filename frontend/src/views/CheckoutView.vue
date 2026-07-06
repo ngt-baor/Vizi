@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { RouterLink, useRoute } from "vue-router";
-import { getDesign, type DesignDetail } from "../api";
+import { RouterLink, useRoute, useRouter } from "vue-router";
+import { createOrder, getDesign, type DesignDetail } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
 
 type CanvasLayer = Record<string, unknown> & {
@@ -9,10 +9,13 @@ type CanvasLayer = Record<string, unknown> & {
 };
 
 const route = useRoute();
+const router = useRouter();
 const design = ref<DesignDetail | null>(null);
 const layers = ref<CanvasLayer[]>([]);
 const loading = ref(true);
 const error = ref("");
+const orderError = ref("");
+const submitting = ref(false);
 const paper = ref("matte-350");
 const quantity = ref(100);
 const roundedCorners = ref(false);
@@ -59,6 +62,22 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+async function submitOrder() {
+  if (!design.value || submitting.value) {
+    return;
+  }
+  submitting.value = true;
+  orderError.value = "";
+  try {
+    const order = await createOrder(design.value.id, paper.value, quantity.value, roundedCorners.value);
+    await router.push({ name: "order-detail", params: { orderId: order.id } });
+  } catch (unknownError) {
+    orderError.value = unknownError instanceof Error ? unknownError.message : "Cannot create order";
+  } finally {
+    submitting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -94,7 +113,7 @@ onMounted(async () => {
           />
         </section>
 
-        <form class="checkout-panel" aria-label="Print checkout options">
+        <form class="checkout-panel" aria-label="Print checkout options" @submit.prevent="submitOrder">
           <label>
             <span>Paper</span>
             <select v-model="paper" aria-label="Paper type">
@@ -137,8 +156,13 @@ onMounted(async () => {
             </div>
           </dl>
 
-          <button class="primary-action" type="button" disabled>
-            Create order
+          <p v-if="orderError" class="error-text" role="alert">
+            {{ orderError }}
+            <RouterLink v-if="orderError.includes('Sign in')" to="/account">Open account</RouterLink>
+          </p>
+
+          <button class="primary-action" type="submit" :disabled="submitting">
+            {{ submitting ? "Creating order..." : "Create order" }}
           </button>
         </form>
       </div>
