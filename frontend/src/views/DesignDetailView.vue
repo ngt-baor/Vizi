@@ -24,7 +24,14 @@ import {
 } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { deleteDesign, getDesign, updateDesign, type DesignDetail } from "../api";
+import {
+  apiBaseUrl,
+  deleteDesign,
+  getDesign,
+  updateDesign,
+  uploadImageAsset,
+  type DesignDetail,
+} from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
 import { localFonts } from "../generated/localFonts";
 
@@ -60,6 +67,8 @@ const assetPreviewUrl = ref("");
 const assetPreviewName = ref("");
 const assetPreviewSize = ref("");
 const assetPreviewError = ref("");
+const assetPreviewFile = ref<File | null>(null);
+const assetUploading = ref(false);
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
@@ -331,6 +340,7 @@ function revokeAssetPreview(): void {
   assetPreviewUrl.value = "";
   assetPreviewName.value = "";
   assetPreviewSize.value = "";
+  assetPreviewFile.value = null;
 }
 
 function formatBytes(bytes: number): string {
@@ -362,11 +372,46 @@ function previewAssetImage(event: Event): void {
   assetPreviewUrl.value = URL.createObjectURL(file);
   assetPreviewName.value = file.name;
   assetPreviewSize.value = formatBytes(file.size);
+  assetPreviewFile.value = file;
 }
 
 function clearAssetPreview(): void {
   revokeAssetPreview();
   assetPreviewError.value = "";
+}
+
+function backendAssetUrl(url: string): string {
+  return url.startsWith("/") ? `${apiBaseUrl}${url}` : url;
+}
+
+async function addPreviewAssetToCanvas(): Promise<void> {
+  if (!assetPreviewFile.value || assetUploading.value || selectedPage.value !== "front") {
+    return;
+  }
+
+  assetUploading.value = true;
+  assetPreviewError.value = "";
+  try {
+    const uploaded = await uploadImageAsset(assetPreviewFile.value);
+    const layer: CanvasLayer = {
+      type: "image",
+      name: assetPreviewName.value || uploaded.fileName,
+      src: backendAssetUrl(uploaded.url),
+      storageKey: uploaded.storageKey,
+      x: 12,
+      y: 12,
+      width: 32,
+      height: 32,
+      opacity: 1,
+    };
+    const layers = [...editableLayers.value, layer];
+    commitLayers(layers, [layers.length - 1]);
+    activeTool.value = "image";
+  } catch (unknownError) {
+    assetPreviewError.value = unknownError instanceof Error ? unknownError.message : "Cannot upload image";
+  } finally {
+    assetUploading.value = false;
+  }
 }
 
 function startCanvasPan(event: PointerEvent): void {
@@ -1140,6 +1185,13 @@ onUnmounted(() => {
                 <strong>{{ assetPreviewName }}</strong>
                 <span>{{ assetPreviewSize }}</span>
               </figcaption>
+              <button
+                type="button"
+                :disabled="assetUploading || selectedPage !== 'front'"
+                @click="addPreviewAssetToCanvas"
+              >
+                {{ assetUploading ? "Uploading..." : "Add to canvas" }}
+              </button>
               <button type="button" @click="clearAssetPreview">Clear</button>
             </figure>
             <p v-else-if="!assetPreviewError" class="muted">No uploaded assets</p>

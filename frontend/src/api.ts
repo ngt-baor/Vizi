@@ -36,6 +36,14 @@ export type DesignDetail = {
 
 export type DesignListItem = Omit<DesignDetail, "canvasJson">;
 
+export type ImageUploadResponse = {
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  storageKey: string;
+  url: string;
+};
+
 type CsrfResponse = {
   headerName: string;
   token: string;
@@ -239,6 +247,20 @@ export async function deleteDesign(designId: number): Promise<void> {
   if (!response.ok) {
     throw await authError(response, `Delete draft failed: ${response.status}`);
   }
+}
+
+export async function uploadImageAsset(file: File): Promise<ImageUploadResponse> {
+  const form = new FormData();
+  form.set("file", file);
+  const response = await writeWithCsrf("/api/uploads/images", "POST", form);
+  if (response.status === 401) {
+    throw new Error("Sign in to upload images");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Image upload failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<ImageUploadResponse>;
 }
 
 export { apiBaseUrl };
