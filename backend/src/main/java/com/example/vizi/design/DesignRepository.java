@@ -5,7 +5,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-interface DesignRepository extends JpaRepository<Design, Long> {
+public interface DesignRepository extends JpaRepository<Design, Long> {
 
     List<Design> findByUser_IdOrderByUpdatedAtDesc(Long userId);
 

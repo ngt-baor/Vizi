@@ -20,7 +20,7 @@ import org.hibernate.annotations.ColumnTransformer;
 
 @Entity
 @Table(name = "designs")
-class Design {
+public class Design {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -67,7 +67,7 @@ class Design {
         this.updatedAt = createdAt;
     }
 
-    Long id() {
+    public Long id() {
         return id;
     }
 
@@ -79,15 +79,15 @@ class Design {
         return name;
     }
 
-    String canvasJson() {
+    public String canvasJson() {
         return canvasJson;
     }
 
-    BigDecimal widthMm() {
+    public BigDecimal widthMm() {
         return widthMm;
     }
 
-    BigDecimal heightMm() {
+    public BigDecimal heightMm() {
         return heightMm;
     }
 
