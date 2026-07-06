@@ -106,6 +106,15 @@ const rotatableLayerIndex = computed<number | null>(() => {
     ? selectedLayerIndex.value
     : null;
 });
+const selectedLayerCanEditGeometry = computed(() => {
+  const layer = selectedLayer.value;
+  if (!layer) {
+    return false;
+  }
+  return selectedPage.value === "front"
+    && selectedLayerIndexes.value.length === 1
+    && !layerIsLocked(layer);
+});
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
     return `${selectedLayerIndexes.value.length} layers selected`;
@@ -375,6 +384,47 @@ function normalizeDegrees(value: number): number {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
+}
+
+function selectedLayerNumber(field: string, fallback: number): number {
+  const layer = selectedLayer.value;
+  return layer ? numberValue(layer[field], fallback) : fallback;
+}
+
+function layerDefaultSize(layer: CanvasLayer, field: "width" | "height"): number {
+  if (field === "width") {
+    return layer.type === "text" ? 45 : 32;
+  }
+  return layer.type === "text" ? 16 : 26;
+}
+
+function updateSelectedLayerNumber(field: "x" | "y" | "width" | "height" | "rotation", event: Event): void {
+  const layer = selectedLayer.value;
+  const value = (event.target as HTMLInputElement).valueAsNumber;
+  if (!layer || !Number.isFinite(value) || !selectedLayerCanEditGeometry.value) {
+    return;
+  }
+
+  const width = numberValue(layer.width, layerDefaultSize(layer, "width"));
+  const height = numberValue(layer.height, layerDefaultSize(layer, "height"));
+  let nextValue = value;
+  if (field === "rotation") {
+    nextValue = normalizeDegrees(value);
+  } else if (field === "x") {
+    nextValue = clamp(value, 0, 100 - width);
+  } else if (field === "y") {
+    nextValue = clamp(value, 0, 100 - height);
+  } else if (field === "width") {
+    nextValue = clamp(value, 3, 100 - numberValue(layer.x, 8));
+  } else {
+    nextValue = clamp(value, 3, 100 - numberValue(layer.y, 8));
+  }
+
+  editableLayers.value[selectedLayerIndex.value] = {
+    ...layer,
+    [field]: Math.round(nextValue * 100) / 100,
+  };
+  saveMessage.value = "";
 }
 
 function toggleLayerVisibility(index: number): void {
@@ -720,6 +770,78 @@ onMounted(async () => {
                 <dd>{{ selectedLayer && layerIsLocked(selectedLayer) ? "Yes" : "No" }}</dd>
               </div>
             </dl>
+            <div
+              v-if="selectedLayerIndexes.length === 1 && selectedLayer"
+              class="editor-geometry"
+              aria-label="Selected layer geometry"
+            >
+              <label>
+                <span>X</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  :value="selectedLayerNumber('x', 8)"
+                  :disabled="!selectedLayerCanEditGeometry"
+                  aria-label="Layer X"
+                  @input="updateSelectedLayerNumber('x', $event)"
+                />
+              </label>
+              <label>
+                <span>Y</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  :value="selectedLayerNumber('y', 8)"
+                  :disabled="!selectedLayerCanEditGeometry"
+                  aria-label="Layer Y"
+                  @input="updateSelectedLayerNumber('y', $event)"
+                />
+              </label>
+              <label>
+                <span>W</span>
+                <input
+                  type="number"
+                  min="3"
+                  max="100"
+                  step="0.01"
+                  :value="selectedLayerNumber('width', layerDefaultSize(selectedLayer, 'width'))"
+                  :disabled="!selectedLayerCanEditGeometry"
+                  aria-label="Layer width"
+                  @input="updateSelectedLayerNumber('width', $event)"
+                />
+              </label>
+              <label>
+                <span>H</span>
+                <input
+                  type="number"
+                  min="3"
+                  max="100"
+                  step="0.01"
+                  :value="selectedLayerNumber('height', layerDefaultSize(selectedLayer, 'height'))"
+                  :disabled="!selectedLayerCanEditGeometry"
+                  aria-label="Layer height"
+                  @input="updateSelectedLayerNumber('height', $event)"
+                />
+              </label>
+              <label>
+                <span>R</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="360"
+                  step="0.01"
+                  :value="selectedLayerNumber('rotation', 0)"
+                  :disabled="!selectedLayerCanEditGeometry"
+                  aria-label="Layer rotation"
+                  @input="updateSelectedLayerNumber('rotation', $event)"
+                />
+              </label>
+            </div>
+            <p v-else class="muted">Select one layer to edit geometry.</p>
           </section>
 
           <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
