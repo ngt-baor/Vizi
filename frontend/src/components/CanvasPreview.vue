@@ -81,6 +81,11 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const fontSize = numberValue(layer.fontSize, 14);
   const stroke = stringValue(layer.stroke, "rgba(122, 93, 46, 0.18)");
   const strokeWidth = numberValue(layer.strokeWidth, 1);
+  const blur = numberValue(layer.blur, 0);
+  const shadowBlur = numberValue(layer.shadowBlur, 0);
+  const shadow = shadowBlur > 0
+    ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${stringValue(layer.shadowColor, "rgba(47,40,28,0.24)")}`
+    : "none";
 
   return {
     left: `${x}%`,
@@ -100,6 +105,8 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
       : `${fontSize}px`,
     fontWeight: numberValue(layer.fontWeight, 700),
     opacity: numberValue(layer.opacity, 1),
+    boxShadow: shadow,
+    filter: blur > 0 ? `blur(${blur}px)` : "none",
     transform: `rotate(${numberValue(layer.rotation, 0)}deg)`,
     transformOrigin: "center center",
   };

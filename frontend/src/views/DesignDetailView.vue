@@ -511,6 +511,38 @@ function updateSelectedAppearanceNumber(field: "opacity" | "strokeWidth", event:
   saveMessage.value = "";
 }
 
+function updateSelectedEffectColor(event: Event): void {
+  const layer = selectedLayer.value;
+  if (!layer || !selectedLayerCanEditAppearance.value) {
+    return;
+  }
+
+  editableLayers.value[selectedLayerIndex.value] = {
+    ...layer,
+    shadowColor: (event.target as HTMLInputElement).value,
+  };
+  saveMessage.value = "";
+}
+
+function updateSelectedEffectNumber(
+  field: "shadowX" | "shadowY" | "shadowBlur" | "blur",
+  event: Event,
+): void {
+  const layer = selectedLayer.value;
+  const value = (event.target as HTMLInputElement).valueAsNumber;
+  if (!layer || !Number.isFinite(value) || !selectedLayerCanEditAppearance.value) {
+    return;
+  }
+
+  editableLayers.value[selectedLayerIndex.value] = {
+    ...layer,
+    [field]: field === "shadowX" || field === "shadowY"
+      ? Math.round(clamp(value, -50, 50) * 100) / 100
+      : Math.round(clamp(value, 0, 50) * 100) / 100,
+  };
+  saveMessage.value = "";
+}
+
 function toggleLayerVisibility(index: number): void {
   const layer = editableLayers.value[index];
   if (!layer) {
@@ -1033,6 +1065,75 @@ onMounted(async () => {
               </label>
             </div>
             <p v-else class="muted">Select one layer to edit appearance.</p>
+            <div
+              v-if="selectedLayerIndexes.length === 1 && selectedLayer"
+              class="editor-effects"
+              aria-label="Selected layer effects"
+            >
+              <label>
+                <span>Shadow X</span>
+                <input
+                  type="number"
+                  min="-50"
+                  max="50"
+                  step="1"
+                  :value="selectedLayerNumber('shadowX', 0)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer shadow X"
+                  @input="updateSelectedEffectNumber('shadowX', $event)"
+                />
+              </label>
+              <label>
+                <span>Shadow Y</span>
+                <input
+                  type="number"
+                  min="-50"
+                  max="50"
+                  step="1"
+                  :value="selectedLayerNumber('shadowY', 4)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer shadow Y"
+                  @input="updateSelectedEffectNumber('shadowY', $event)"
+                />
+              </label>
+              <label>
+                <span>Shadow Blur</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  step="1"
+                  :value="selectedLayerNumber('shadowBlur', 0)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer shadow blur"
+                  @input="updateSelectedEffectNumber('shadowBlur', $event)"
+                />
+              </label>
+              <label>
+                <span>Shadow Color</span>
+                <input
+                  type="color"
+                  :value="selectedLayerString('shadowColor', '#000000')"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer shadow color"
+                  @input="updateSelectedEffectColor"
+                />
+              </label>
+              <label>
+                <span>Blur</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  step="0.5"
+                  :value="selectedLayerNumber('blur', 0)"
+                  :disabled="!selectedLayerCanEditAppearance"
+                  aria-label="Layer blur"
+                  @input="updateSelectedEffectNumber('blur', $event)"
+                />
+              </label>
+            </div>
+            <p v-else class="muted">Select one layer to edit effects.</p>
           </section>
 
           <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
