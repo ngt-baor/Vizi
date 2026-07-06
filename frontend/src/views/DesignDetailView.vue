@@ -450,6 +450,36 @@ async function generateQrPreview(): Promise<void> {
   }
 }
 
+async function addQrToCanvas(): Promise<void> {
+  const value = qrText.value.trim();
+  if (!value || selectedPage.value !== "front") {
+    qrPreviewError.value = value ? "" : "QR text is required.";
+    return;
+  }
+  if (!qrPreviewUrl.value) {
+    await generateQrPreview();
+  }
+  if (!qrPreviewUrl.value) {
+    return;
+  }
+
+  const layer: CanvasLayer = {
+    type: "qr",
+    name: "QR code",
+    text: value,
+    src: qrPreviewUrl.value,
+    x: 66,
+    y: 12,
+    width: 22,
+    height: 22,
+    fill: "#ffffff",
+    opacity: 1,
+  };
+  const layers = [...editableLayers.value, layer];
+  commitLayers(layers, [layers.length - 1]);
+  activeTool.value = "qr";
+}
+
 function startCanvasPan(event: PointerEvent): void {
   if ((event.target as HTMLElement | null)?.closest(".canvas-frame, .editor-toolbar, .editor-color-bar, .editor-zoom-controls")) {
     return;
@@ -1253,6 +1283,9 @@ onUnmounted(() => {
                   <strong>QR code</strong>
                   <span>{{ qrText }}</span>
                 </figcaption>
+                <button type="button" :disabled="selectedPage !== 'front'" @click="addQrToCanvas">
+                  Add QR to canvas
+                </button>
               </figure>
             </div>
           </section>

@@ -60,6 +60,9 @@ function layerText(layer: CanvasLayer): string {
 
 function layerImageSource(layer: CanvasLayer): string {
   const source = stringValue(layer.src ?? layer.url ?? layer.imageUrl, "");
+  if (layer.type === "qr" && source.startsWith("data:image/png;base64,")) {
+    return source;
+  }
   return source.startsWith("http://") || source.startsWith("https://") || source.startsWith("/")
     ? source
     : "";
@@ -67,7 +70,7 @@ function layerImageSource(layer: CanvasLayer): string {
 
 function layerClass(layer: CanvasLayer): string {
   const type = stringValue(layer.type, "unknown");
-  return ["text", "rect", "shape", "image"].includes(type)
+  return ["text", "rect", "shape", "image", "qr"].includes(type)
     ? `canvas-layer--${type}`
     : "canvas-layer--unknown";
 }
@@ -153,7 +156,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
         @keydown.space.prevent="interactive && emit('layerSelect', index, $event)"
       >
         <img
-          v-if="layer.type === 'image' && layerImageSource(layer)"
+          v-if="(layer.type === 'image' || layer.type === 'qr') && layerImageSource(layer)"
           :src="layerImageSource(layer)"
           :alt="layerText(layer)"
         />
