@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -160,6 +161,65 @@ class OrderApiIntegrationTests {
                 String.class,
                 orderId.longValue()
         )).isEqualTo("54.00");
+    }
+
+    @Test
+    void orderSnapshotDoesNotChangeWhenDesignIsEditedAfterCheckout() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        var template = templateRepository.save(new Template(
+                "Snapshot Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[{\"type\":\"text\",\"text\":\"Original\"}]}",
+                true
+        ));
+        var createDesignResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createDesignResponse.getResponse().getContentAsString(), "$.id");
+
+        var createOrderResponse = mockMvc.perform(post("/api/orders")
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "matte-350",
+                                  "quantity": 100,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(designId.longValue())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number orderId = JsonPath.read(createOrderResponse.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(put("/api/designs/" + designId.longValue())
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Changed Card",
+                                  "canvasJson": "{\\"layers\\":[{\\"type\\":\\"text\\",\\"text\\":\\"Changed\\"}]}"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select canvas_json->'layers'->0->>'text' from designs where id = ?",
+                String.class,
+                designId.longValue()
+        )).isEqualTo("Changed");
+        assertThat(jdbcTemplate.queryForObject(
+                "select design_snapshot_json->'layers'->0->>'text' from order_items where order_id = ?",
+                String.class,
+                orderId.longValue()
+        )).isEqualTo("Original");
     }
 
     @Test
