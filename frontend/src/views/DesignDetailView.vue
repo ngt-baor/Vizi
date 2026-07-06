@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {
+  ArrowDown,
+  ArrowUp,
   Eye,
   EyeOff,
   ImageIcon,
@@ -190,6 +192,19 @@ function toggleLayerLock(index: number): void {
   saveMessage.value = "";
 }
 
+function moveLayer(index: number, direction: -1 | 1): void {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= editableLayers.value.length) {
+    return;
+  }
+
+  const layers = [...editableLayers.value];
+  [layers[index], layers[nextIndex]] = [layers[nextIndex], layers[index]];
+  editableLayers.value = layers;
+  selectedLayerIndex.value = nextIndex;
+  saveMessage.value = "";
+}
+
 function applyQuickColor(color: string): void {
   if (selectedPage.value !== "front") {
     return;
@@ -329,36 +344,58 @@ onMounted(async () => {
                     <span>{{ index + 1 }}</span>
                     <strong>{{ layer.type || "Layer" }}</strong>
                   </button>
-                  <button
-                    type="button"
-                    class="editor-layer-toggle"
-                    :aria-pressed="!layerIsVisible(layer)"
-                    :aria-label="`${layerIsVisible(layer) ? 'Hide' : 'Show'} layer ${index + 1}`"
-                    :title="layerIsVisible(layer) ? 'Hide layer' : 'Show layer'"
-                    @click="toggleLayerVisibility(index)"
-                  >
-                    <component
-                      :is="layerIsVisible(layer) ? Eye : EyeOff"
-                      :size="16"
-                      :stroke-width="1.8"
-                      aria-hidden="true"
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    class="editor-layer-toggle editor-layer-toggle--lock"
-                    :aria-pressed="layerIsLocked(layer)"
-                    :aria-label="`${layerIsLocked(layer) ? 'Unlock' : 'Lock'} layer ${index + 1}`"
-                    :title="layerIsLocked(layer) ? 'Unlock layer' : 'Lock layer'"
-                    @click="toggleLayerLock(index)"
-                  >
-                    <component
-                      :is="layerIsLocked(layer) ? Lock : Unlock"
-                      :size="16"
-                      :stroke-width="1.8"
-                      aria-hidden="true"
-                    />
-                  </button>
+                  <div class="editor-layer-actions" :aria-label="`Layer ${index + 1} actions`">
+                    <button
+                      type="button"
+                      class="editor-layer-toggle"
+                      :disabled="index === 0"
+                      :aria-label="`Move layer ${index + 1} up`"
+                      title="Move layer up"
+                      @click="moveLayer(index, -1)"
+                    >
+                      <ArrowUp :size="16" :stroke-width="1.8" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="editor-layer-toggle"
+                      :disabled="index === displayedCanvasLayers.length - 1"
+                      :aria-label="`Move layer ${index + 1} down`"
+                      title="Move layer down"
+                      @click="moveLayer(index, 1)"
+                    >
+                      <ArrowDown :size="16" :stroke-width="1.8" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="editor-layer-toggle"
+                      :aria-pressed="!layerIsVisible(layer)"
+                      :aria-label="`${layerIsVisible(layer) ? 'Hide' : 'Show'} layer ${index + 1}`"
+                      :title="layerIsVisible(layer) ? 'Hide layer' : 'Show layer'"
+                      @click="toggleLayerVisibility(index)"
+                    >
+                      <component
+                        :is="layerIsVisible(layer) ? Eye : EyeOff"
+                        :size="16"
+                        :stroke-width="1.8"
+                        aria-hidden="true"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      class="editor-layer-toggle editor-layer-toggle--lock"
+                      :aria-pressed="layerIsLocked(layer)"
+                      :aria-label="`${layerIsLocked(layer) ? 'Unlock' : 'Lock'} layer ${index + 1}`"
+                      :title="layerIsLocked(layer) ? 'Unlock layer' : 'Lock layer'"
+                      @click="toggleLayerLock(index)"
+                    >
+                      <component
+                        :is="layerIsLocked(layer) ? Lock : Unlock"
+                        :size="16"
+                        :stroke-width="1.8"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
                 </div>
               </li>
             </ol>

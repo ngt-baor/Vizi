@@ -373,9 +373,7 @@ h2 {
 
 .editor-layer-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px 38px;
   gap: 6px;
-  align-items: center;
 }
 
 .editor-layer-button {
@@ -409,6 +407,13 @@ h2 {
   cursor: pointer;
 }
 
+.editor-layer-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 38px);
+  gap: 6px;
+  justify-content: end;
+}
+
 .editor-layer-button:hover,
 .editor-layer-toggle:hover,
 .editor-layer-row.active .editor-layer-button,
@@ -421,6 +426,11 @@ h2 {
 .editor-layer-toggle[aria-pressed="true"] {
   color: #a5382f;
   opacity: 0.72;
+}
+
+.editor-layer-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .editor-layer-toggle--lock[aria-pressed="true"] {
