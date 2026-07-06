@@ -240,6 +240,13 @@ onMounted(async () => {
           <button class="primary-action" type="button" :disabled="saving" @click="saveDraft">
             {{ saving ? "Saving..." : "Save draft" }}
           </button>
+          <RouterLink
+            v-if="savedDesignId !== null"
+            class="secondary-action"
+            :to="{ name: 'editor', params: { designId: savedDesignId } }"
+          >
+            Open editor
+          </RouterLink>
           <span v-if="saveMessage" class="save-status" role="status">{{ saveMessage }}</span>
           <span v-else-if="!saveError" class="muted">
             {{ savedDesignId === null ? "Local draft" : "Unsaved changes" }}

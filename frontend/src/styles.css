@@ -400,8 +400,10 @@ h2 {
   background: #2f281c;
   color: #fffaf0;
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-weight: 800;
+  text-decoration: none;
   padding: 12px 18px;
 }
 
@@ -506,9 +508,11 @@ h2 {
   background: #fff;
   color: #493b28;
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-weight: 800;
   padding: 11px 16px;
+  text-decoration: none;
 }
 
 @media (max-width: 640px) {

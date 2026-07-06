@@ -19,7 +19,10 @@ const confirmingDelete = ref(false);
 const saveMessage = ref("");
 const saveError = ref("");
 
-const designId = computed(() => Number(route.params.id));
+const designId = computed(() => {
+  const value = route.params.designId ?? route.params.id;
+  return Number(Array.isArray(value) ? value[0] : value);
+});
 const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value);
 const canvasLayerCount = computed(() => canvasLayers.value.length);
 const firstTextLayerIndex = computed(() =>

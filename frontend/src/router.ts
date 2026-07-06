@@ -30,6 +30,11 @@ export const router = createRouter({
       component: TemplatesView,
     },
     {
+      path: "/editor/:designId",
+      name: "editor",
+      component: DesignDetailView,
+    },
+    {
       path: "/designs/:id",
       name: "design-detail",
       component: DesignDetailView,

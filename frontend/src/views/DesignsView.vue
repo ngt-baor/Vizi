@@ -51,7 +51,7 @@ onMounted(async () => {
       <RouterLink
         v-for="design in designs"
         :key="design.id"
-        :to="{ name: 'design-detail', params: { id: design.id } }"
+        :to="{ name: 'editor', params: { designId: design.id } }"
         class="template-card"
       >
         <div class="template-preview" aria-hidden="true">
