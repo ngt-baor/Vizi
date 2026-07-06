@@ -39,4 +39,62 @@ class PreflightServiceTests {
         assertThat(report.issues()).extracting(PreflightIssue::code)
                 .containsExactly("INVALID_CANVAS");
     }
+
+    @Test
+    void textOutsideSafeZoneReturnsBlockingError() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"text\",\"x\":1,\"y\":1,\"width\":30,\"height\":10}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isFalse();
+        assertThat(report.issues()).containsExactly(new PreflightIssue(
+                "ERROR",
+                "LAYER_OUTSIDE_SAFE_ZONE",
+                "Text and QR layers must stay inside the 3 mm safe zone.",
+                0
+        ));
+    }
+
+    @Test
+    void imageOutsideSafeZoneReturnsNonBlockingWarning() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"image\",\"x\":0,\"y\":0,\"width\":30,\"height\":30}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.issues()).containsExactly(new PreflightIssue(
+                "WARNING",
+                "LAYER_OUTSIDE_SAFE_ZONE",
+                "Layer extends outside the 3 mm safe zone.",
+                0
+        ));
+    }
+
+    @Test
+    void fullCanvasBackgroundDoesNotTriggerSafeZoneWarning() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"width\":100,\"height\":100}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.issues()).isEmpty();
+    }
+
+    @Test
+    void layerInsideSafeZonePasses() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"text\",\"x\":10,\"y\":10,\"width\":40,\"height\":20}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.issues()).isEmpty();
+    }
 }

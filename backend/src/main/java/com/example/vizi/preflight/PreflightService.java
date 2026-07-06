@@ -1,13 +1,17 @@
 package com.example.vizi.preflight;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class PreflightService {
+
+    private static final double SAFE_ZONE_MM = 3;
 
     private final ObjectMapper objectMapper;
 
@@ -35,7 +39,12 @@ public class PreflightService {
                         null
                 ));
             }
-            return new PreflightReport(true, List.of());
+            var issues = new ArrayList<PreflightIssue>();
+            addSafeZoneIssues(layers, widthMm, heightMm, issues);
+            return new PreflightReport(
+                    issues.stream().noneMatch(issue -> issue.level().equals("ERROR")),
+                    List.copyOf(issues)
+            );
         } catch (Exception exception) {
             return report(new PreflightIssue(
                     "ERROR",
@@ -48,5 +57,74 @@ public class PreflightService {
 
     private static PreflightReport report(PreflightIssue issue) {
         return new PreflightReport(false, List.of(issue));
+    }
+
+    private static void addSafeZoneIssues(
+            JsonNode layers,
+            double widthMm,
+            double heightMm,
+            List<PreflightIssue> issues
+    ) {
+        if (widthMm <= 0 || heightMm <= 0) {
+            issues.add(new PreflightIssue(
+                    "ERROR",
+                    "INVALID_CANVAS_SIZE",
+                    "Canvas width and height must be positive.",
+                    null
+            ));
+            return;
+        }
+
+        var safeX = SAFE_ZONE_MM / widthMm * 100;
+        var safeY = SAFE_ZONE_MM / heightMm * 100;
+        for (int index = 0; index < layers.size(); index++) {
+            var layer = layers.get(index);
+            if (!layer.isObject()) {
+                continue;
+            }
+            var type = text(layer, "type", "");
+            var x = number(layer, "x", 8);
+            var y = number(layer, "y", 8);
+            var width = number(layer, "width", type.equals("text") ? 45 : 32);
+            var height = number(layer, "height", type.equals("text") ? 16 : 26);
+            if (isFullCanvasBackground(type, x, y, width, height)) {
+                continue;
+            }
+            if (x < safeX || y < safeY || x + width > 100 - safeX || y + height > 100 - safeY) {
+                var critical = type.equals("text") || type.equals("qr");
+                issues.add(new PreflightIssue(
+                        critical ? "ERROR" : "WARNING",
+                        "LAYER_OUTSIDE_SAFE_ZONE",
+                        critical
+                                ? "Text and QR layers must stay inside the 3 mm safe zone."
+                                : "Layer extends outside the 3 mm safe zone.",
+                        index
+                ));
+            }
+        }
+    }
+
+    private static boolean isFullCanvasBackground(
+            String type,
+            double x,
+            double y,
+            double width,
+            double height
+    ) {
+        return (type.equals("rect") || type.equals("shape"))
+                && x <= 0
+                && y <= 0
+                && x + width >= 100
+                && y + height >= 100;
+    }
+
+    private static double number(JsonNode node, String field, double fallback) {
+        var value = node.get(field);
+        return value != null && value.isNumber() ? value.doubleValue() : fallback;
+    }
+
+    private static String text(JsonNode node, String field, String fallback) {
+        var value = node.get(field);
+        return value != null && value.isString() ? value.stringValue() : fallback;
     }
 }
