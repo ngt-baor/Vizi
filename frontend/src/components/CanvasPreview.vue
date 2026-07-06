@@ -13,12 +13,14 @@ const props = defineProps<{
   emptyLabel: string;
   selectedLayerIndex?: number | null;
   selectedLayerIndexes?: number[];
+  resizableLayerIndex?: number | null;
   interactive?: boolean;
 }>();
 
 const emit = defineEmits<{
   canvasPointerdown: [event: PointerEvent];
   layerPointerdown: [index: number, event: PointerEvent];
+  layerResizePointerdown: [index: number, event: PointerEvent];
   layerSelect: [index: number, event: KeyboardEvent];
 }>();
 
@@ -129,6 +131,14 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
         <template v-else>
           {{ layerText(layer) }}
         </template>
+        <button
+          v-if="interactive && index === resizableLayerIndex"
+          type="button"
+          class="canvas-resize-handle"
+          :aria-label="`Resize layer ${index + 1}`"
+          title="Resize layer"
+          @pointerdown.stop.prevent="emit('layerResizePointerdown', index, $event)"
+        />
       </div>
     </template>
     <span v-if="layers.length === 0" class="canvas-empty">{{ emptyLabel }}</span>

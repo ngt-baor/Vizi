@@ -86,6 +86,16 @@ const selectedLayer = computed<CanvasLayer | null>(
     ? displayedCanvasLayers.value[selectedLayerIndex.value] ?? null
     : null,
 );
+const resizableLayerIndex = computed<number | null>(() => {
+  const layer = selectedLayer.value;
+  return selectedPage.value === "front"
+    && selectedLayerIndexes.value.length === 1
+    && layer
+    && layerIsVisible(layer)
+    && !layerIsLocked(layer)
+    ? selectedLayerIndex.value
+    : null;
+});
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
     return `${selectedLayerIndexes.value.length} layers selected`;
@@ -256,6 +266,46 @@ function startLayerDrag(index: number, event: PointerEvent): void {
       };
     }
     editableLayers.value = layers;
+    saveMessage.value = "";
+  };
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
+function startLayerResize(index: number, event: PointerEvent): void {
+  const layer = editableLayers.value[index];
+  const frame = (event.currentTarget as HTMLElement).closest<HTMLElement>(".canvas-frame");
+  if (!layer || !frame || layerIsLocked(layer) || selectedLayerIndexes.value.length !== 1) {
+    return;
+  }
+
+  event.preventDefault();
+  const frameRect = frame.getBoundingClientRect();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const x = numberValue(layer.x, 8);
+  const y = numberValue(layer.y, 8);
+  const startWidth = numberValue(layer.width, layer.type === "text" ? 45 : 32);
+  const startHeight = numberValue(layer.height, layer.type === "text" ? 16 : 26);
+
+  const move = (moveEvent: PointerEvent) => {
+    const width = clamp(
+      startWidth + ((moveEvent.clientX - startX) / frameRect.width) * 100,
+      3,
+      100 - x,
+    );
+    const height = clamp(
+      startHeight + ((moveEvent.clientY - startY) / frameRect.height) * 100,
+      3,
+      100 - y,
+    );
+    editableLayers.value[index] = { ...editableLayers.value[index], width, height };
     saveMessage.value = "";
   };
   const stop = () => {
@@ -546,9 +596,11 @@ onMounted(async () => {
             :empty-label="selectedPageLabel"
             :selected-layer-index="selectedLayerIndex"
             :selected-layer-indexes="selectedLayerIndexes"
+            :resizable-layer-index="resizableLayerIndex"
             interactive
             @canvas-pointerdown="clearLayerSelection"
             @layer-pointerdown="startLayerDrag"
+            @layer-resize-pointerdown="startLayerResize"
             @layer-select="selectLayer"
           />
           <div class="editor-color-bar" aria-label="Quick colors">
