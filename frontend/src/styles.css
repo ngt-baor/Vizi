@@ -373,7 +373,7 @@ h2 {
 
 .editor-layer-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) 38px 38px;
   gap: 6px;
   align-items: center;
 }
@@ -421,6 +421,11 @@ h2 {
 .editor-layer-toggle[aria-pressed="true"] {
   color: #a5382f;
   opacity: 0.72;
+}
+
+.editor-layer-toggle--lock[aria-pressed="true"] {
+  color: #2f281c;
+  opacity: 1;
 }
 
 .editor-layer-button:focus-visible,
@@ -763,6 +768,11 @@ h2 {
   border-color: rgba(168, 127, 51, 0.55);
   outline: 3px solid rgba(168, 127, 51, 0.22);
   outline-offset: 2px;
+}
+
+.editor-panel textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .primary-action {

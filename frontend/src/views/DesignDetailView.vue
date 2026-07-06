@@ -1,5 +1,16 @@
 <script setup lang="ts">
-import { Eye, EyeOff, ImageIcon, MousePointer2, QrCode, Shapes, Sticker, Type } from "@lucide/vue";
+import {
+  Eye,
+  EyeOff,
+  ImageIcon,
+  Lock,
+  MousePointer2,
+  QrCode,
+  Shapes,
+  Sticker,
+  Type,
+  Unlock,
+} from "@lucide/vue";
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { deleteDesign, getDesign, updateDesign, type DesignDetail } from "../api";
@@ -87,6 +98,10 @@ const activeColorValue = computed(() => {
 const firstTextLayerIndex = computed(() =>
   displayedCanvasLayers.value.findIndex((layer) => layer.type === "text"),
 );
+const firstTextLayerLocked = computed(() => {
+  const layer = editableLayers.value[firstTextLayerIndex.value];
+  return layer ? layerIsLocked(layer) : false;
+});
 const firstTextLayerText = computed({
   get: () => {
     const layer = editableLayers.value[firstTextLayerIndex.value];
@@ -116,6 +131,10 @@ function optionalString(value: unknown): string | null {
 
 function layerIsVisible(layer: CanvasLayer): boolean {
   return layer.visible !== false && layer.hidden !== true;
+}
+
+function layerIsLocked(layer: CanvasLayer): boolean {
+  return layer.locked === true;
 }
 
 function parseCanvasLayers(canvasJson: string): CanvasLayer[] {
@@ -160,12 +179,23 @@ function toggleLayerVisibility(index: number): void {
   saveMessage.value = "";
 }
 
+function toggleLayerLock(index: number): void {
+  const layer = editableLayers.value[index];
+  if (!layer) {
+    return;
+  }
+
+  editableLayers.value[index] = { ...layer, locked: !layerIsLocked(layer) };
+  selectedLayerIndex.value = index;
+  saveMessage.value = "";
+}
+
 function applyQuickColor(color: string): void {
   if (selectedPage.value !== "front") {
     return;
   }
   const layer = editableLayers.value[selectedLayerIndex.value];
-  if (!layer) {
+  if (!layer || layerIsLocked(layer)) {
     return;
   }
 
@@ -314,6 +344,21 @@ onMounted(async () => {
                       aria-hidden="true"
                     />
                   </button>
+                  <button
+                    type="button"
+                    class="editor-layer-toggle editor-layer-toggle--lock"
+                    :aria-pressed="layerIsLocked(layer)"
+                    :aria-label="`${layerIsLocked(layer) ? 'Unlock' : 'Lock'} layer ${index + 1}`"
+                    :title="layerIsLocked(layer) ? 'Unlock layer' : 'Lock layer'"
+                    @click="toggleLayerLock(index)"
+                  >
+                    <component
+                      :is="layerIsLocked(layer) ? Lock : Unlock"
+                      :size="16"
+                      :stroke-width="1.8"
+                      aria-hidden="true"
+                    />
+                  </button>
                 </div>
               </li>
             </ol>
@@ -372,7 +417,7 @@ onMounted(async () => {
                 :style="{ '--swatch-color': color }"
                 :aria-label="`Apply ${color} to ${activeColorTargetLabel}`"
                 :title="`${activeColorTargetLabel}: ${color}`"
-                :disabled="!selectedLayer"
+                :disabled="!selectedLayer || layerIsLocked(selectedLayer)"
                 @click="applyQuickColor(color)"
               />
             </div>
@@ -404,6 +449,10 @@ onMounted(async () => {
                 <dt>Layers</dt>
                 <dd>{{ canvasLayerCount }}</dd>
               </div>
+              <div>
+                <dt>Locked</dt>
+                <dd>{{ selectedLayer && layerIsLocked(selectedLayer) ? "Yes" : "No" }}</dd>
+              </div>
             </dl>
           </section>
 
@@ -414,6 +463,7 @@ onMounted(async () => {
               v-model="firstTextLayerText"
               maxlength="120"
               rows="5"
+              :disabled="firstTextLayerLocked"
             />
           </div>
           <p v-else class="muted">No text layer.</p>
