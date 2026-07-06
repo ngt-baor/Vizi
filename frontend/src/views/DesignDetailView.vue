@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ImageIcon, MousePointer2, QrCode, Shapes, Sticker, Type } from "@lucide/vue";
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { deleteDesign, getDesign, updateDesign, type DesignDetail } from "../api";
@@ -19,6 +20,14 @@ const deleting = ref(false);
 const confirmingDelete = ref(false);
 const saveMessage = ref("");
 const saveError = ref("");
+const editorTools = [
+  { label: "Select", icon: MousePointer2 },
+  { label: "Text", icon: Type },
+  { label: "Shape", icon: Shapes },
+  { label: "Image", icon: ImageIcon },
+  { label: "QR", icon: QrCode },
+  { label: "Icon", icon: Sticker },
+];
 
 const designId = computed(() => {
   const value = route.params.designId ?? route.params.id;
@@ -185,6 +194,17 @@ onMounted(async () => {
         </aside>
 
         <section class="editor-workspace" aria-label="Card canvas workspace">
+          <div class="editor-toolbar" role="toolbar" aria-label="Canvas tools">
+            <button
+              v-for="tool in editorTools"
+              :key="tool.label"
+              type="button"
+              :title="tool.label"
+            >
+              <component :is="tool.icon" :size="18" :stroke-width="1.8" aria-hidden="true" />
+              <span>{{ tool.label }}</span>
+            </button>
+          </div>
           <CanvasPreview
             :layers="canvasLayers"
             :width-mm="design.widthMm"
