@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import {
   ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   Copy,
   Eye,
   EyeOff,
   ImageIcon,
   Lock,
+  Move,
   MousePointer2,
   QrCode,
   RotateCcw,
@@ -16,6 +19,8 @@ import {
   Trash2,
   Type,
   Unlock,
+  ZoomIn,
+  ZoomOut,
 } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
@@ -48,6 +53,9 @@ const selectedLayerIndexes = ref<number[]>([0]);
 const activeColorTarget = ref<ColorTarget>("fill");
 const undoLayerStack = ref<CanvasLayer[][]>([]);
 const redoLayerStack = ref<CanvasLayer[][]>([]);
+const editorZoom = ref(100);
+const editorPanX = ref(0);
+const editorPanY = ref(0);
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
@@ -147,6 +155,9 @@ const canDuplicateSelectedLayers = computed(() =>
 const canDeleteSelectedLayers = computed(() =>
   selectedPage.value === "front" && selectedLayerIndexes.value.length > 0,
 );
+const editorCanvasTransform = computed(() => ({
+  transform: `translate(${editorPanX.value}px, ${editorPanY.value}px) scale(${editorZoom.value / 100})`,
+}));
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
     return `${selectedLayerIndexes.value.length} layers selected`;
@@ -290,6 +301,48 @@ function redoLayerChange(): void {
   redoLayerStack.value = redoLayerStack.value.slice(0, -1);
   undoLayerStack.value = [...undoLayerStack.value.slice(-49), cloneLayers(editableLayers.value)];
   restoreLayerState(next);
+}
+
+function updateEditorZoom(delta: number): void {
+  editorZoom.value = clamp(editorZoom.value + delta, 50, 200);
+}
+
+function updateEditorPan(deltaX: number, deltaY: number): void {
+  editorPanX.value = clamp(editorPanX.value + deltaX, -360, 360);
+  editorPanY.value = clamp(editorPanY.value + deltaY, -240, 240);
+}
+
+function resetEditorView(): void {
+  editorZoom.value = 100;
+  editorPanX.value = 0;
+  editorPanY.value = 0;
+}
+
+function startCanvasPan(event: PointerEvent): void {
+  if ((event.target as HTMLElement | null)?.closest(".canvas-frame, .editor-toolbar, .editor-color-bar, .editor-zoom-controls")) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  clearLayerSelection();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startPanX = editorPanX.value;
+  const startPanY = editorPanY.value;
+
+  const move = (moveEvent: PointerEvent) => {
+    editorPanX.value = startPanX + moveEvent.clientX - startX;
+    editorPanY.value = startPanY + moveEvent.clientY - startY;
+  };
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
 }
 
 function targetAcceptsTextInput(target: EventTarget | null): boolean {
@@ -1024,7 +1077,7 @@ onUnmounted(() => {
         <section
           class="editor-workspace"
           aria-label="Card canvas workspace"
-          @pointerdown.self="clearLayerSelection"
+          @pointerdown="startCanvasPan"
         >
           <div class="editor-toolbar" role="toolbar" aria-label="Canvas tools">
             <button
@@ -1041,23 +1094,56 @@ onUnmounted(() => {
               <span>{{ tool.label }}</span>
             </button>
           </div>
-          <CanvasPreview
-            :layers="displayedCanvasLayers"
-            :width-mm="design.widthMm"
-            :height-mm="design.heightMm"
-            label="Draft canvas preview"
-            :empty-label="selectedPageLabel"
-            :selected-layer-index="selectedLayerIndex"
-            :selected-layer-indexes="selectedLayerIndexes"
-            :resizable-layer-index="resizableLayerIndex"
-            :rotatable-layer-index="rotatableLayerIndex"
-            interactive
-            @canvas-pointerdown="clearLayerSelection"
-            @layer-pointerdown="startLayerDrag"
-            @layer-resize-pointerdown="startLayerResize"
-            @layer-rotate-pointerdown="startLayerRotate"
-            @layer-select="selectLayer"
-          />
+          <div class="editor-zoom-controls" aria-label="Canvas zoom and pan">
+            <button type="button" aria-label="Zoom out canvas" title="Zoom out" @click="updateEditorZoom(-10)">
+              <ZoomOut :size="16" :stroke-width="1.8" aria-hidden="true" />
+            </button>
+            <button type="button" aria-label="Reset canvas view" title="Reset view" @click="resetEditorView">
+              {{ editorZoom }}%
+            </button>
+            <button type="button" aria-label="Zoom in canvas" title="Zoom in" @click="updateEditorZoom(10)">
+              <ZoomIn :size="16" :stroke-width="1.8" aria-hidden="true" />
+            </button>
+            <button type="button" aria-label="Pan canvas left" title="Pan left" @click="updateEditorPan(-40, 0)">
+              <ArrowLeft :size="16" :stroke-width="1.8" aria-hidden="true" />
+            </button>
+            <button type="button" aria-label="Pan canvas right" title="Pan right" @click="updateEditorPan(40, 0)">
+              <ArrowRight :size="16" :stroke-width="1.8" aria-hidden="true" />
+            </button>
+            <button type="button" aria-label="Pan canvas up" title="Pan up" @click="updateEditorPan(0, -40)">
+              <ArrowUp :size="16" :stroke-width="1.8" aria-hidden="true" />
+            </button>
+            <button type="button" aria-label="Pan canvas down" title="Pan down" @click="updateEditorPan(0, 40)">
+              <ArrowDown :size="16" :stroke-width="1.8" aria-hidden="true" />
+            </button>
+            <span title="Drag empty workspace to pan, or use arrow buttons">
+              <Move :size="16" :stroke-width="1.8" aria-hidden="true" />
+            </span>
+          </div>
+          <div
+            class="editor-canvas-viewport"
+            :style="editorCanvasTransform"
+            aria-label="Pan canvas viewport"
+            @pointerdown="startCanvasPan"
+          >
+            <CanvasPreview
+              :layers="displayedCanvasLayers"
+              :width-mm="design.widthMm"
+              :height-mm="design.heightMm"
+              label="Draft canvas preview"
+              :empty-label="selectedPageLabel"
+              :selected-layer-index="selectedLayerIndex"
+              :selected-layer-indexes="selectedLayerIndexes"
+              :resizable-layer-index="resizableLayerIndex"
+              :rotatable-layer-index="rotatableLayerIndex"
+              interactive
+              @canvas-pointerdown="clearLayerSelection"
+              @layer-pointerdown="startLayerDrag"
+              @layer-resize-pointerdown="startLayerResize"
+              @layer-rotate-pointerdown="startLayerRotate"
+              @layer-select="selectLayer"
+            />
+          </div>
           <div class="editor-color-bar" aria-label="Quick colors">
             <div class="editor-color-targets" aria-label="Color target">
               <button
