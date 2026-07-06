@@ -104,6 +104,105 @@ Thu vien frontend co the can nhac:
 - Konva.js neu muon lam editor theo scene graph gon hon.
 - React Flow khong phu hop lam canvas thiet ke in an.
 
+Quyet dinh cap nhat cho huong editor:
+
+- Khong fork/clone nguyen Penpot, draw.io hoac whiteboard app. Cac du an do qua lon hoac lech domain so voi web-to-print card visit.
+- Chi hoc pattern UX cua Penpot/Figma/Canva: layer panel, toolbar, canvas giua man hinh, properties panel va color/font picker.
+- Vizi se tu xay `Vizi Editor Lite` tren Vue + canvas library, giu dung domain card visit kich thuoc co dinh.
+- Nen uu tien Fabric.js truoc neu muon co san select, drag, resize, rotate, image, text va JSON serialization.
+- Konva.js la phuong an thay the neu can scene graph gon hon, nhung se phai tu lam nhieu control editor hon.
+- Giao dien editor nen la phong cach sang mau, professional luxury; khong copy nguyen dark UI trong anh tham khao. Anh tham khao chi dung de lay layout va workflow.
+- AI de sau editor thu cong. Thu tu dung la lam editor, layer, save/load, upload, QR, pre-flight truoc; AI patch/generate chi lam khi editor da on dinh.
+
+### 5.2.1. Vizi Editor Lite
+
+Editor cua Vizi khong can day du nhu Figma/Penpot. Pham vi dung la `Business Card Editor Lite`:
+
+```text
+Vizi Editor
+|-- Left sidebar
+|   |-- Front / Back
+|   |-- Layers
+|   |-- Assets
+|
+|-- Floating toolbar
+|   |-- Select
+|   |-- Text
+|   |-- Shape
+|   |-- Image
+|   |-- QR
+|   |-- Icon
+|
+|-- Center canvas
+|   |-- Card size selected at design creation
+|   |-- Safe zone
+|   |-- Bleed zone
+|   |-- Draggable layers
+|
+|-- Right properties
+|   |-- Position: X, Y, W, H, rotate
+|   |-- Text: font, size, weight, align
+|   |-- Fill
+|   |-- Stroke
+|   |-- Shadow
+|   |-- Export / pre-flight
+|
+|-- Bottom quick bar
+    |-- Recent colors
+    |-- Fill / stroke shortcut
+    |-- Zoom
+```
+
+Tinh nang nen giu tu cac anh tham khao:
+
+- Layer panel ben trai: danh sach layer, chon layer, an/hien, khoa/mo khoa, doi thu tu.
+- Hai thanh cong cu hai ben: ben trai cho page/layer/asset, ben phai cho thuoc tinh layer dang chon.
+- Toolbar thả nổi tren canvas: select, board/card, shape, circle, text, image, pen/path co ban, icon/asset.
+- Quick color bar phia duoi: mau gan day, fill/stroke nhanh.
+- Color picker chi tiet: HEX, RGB, alpha/opacity, recent colors.
+- Font dropdown co search: can thiet vi project co nhieu font local.
+- Properties panel ben phai: position, size, rotation, text, fill, stroke, shadow, export.
+- Center canvas co vung lam viec ro rang: card nam giua, ti le va kich thuoc bang kich thuoc card visit da chon ban dau, co zoom, safe zone va bleed zone.
+- Page chi co `Front` va `Back`; nguoi dung duoc chuyen mat truoc/mat sau nhung khong duoc them page moi.
+
+Tinh nang nen luoc bo o MVP:
+
+- Prototype mode.
+- Inspect mode.
+- Tokens/design system phuc tap.
+- Realtime collaboration.
+- Comment/presence cursor.
+- Plugin system.
+- Component/variant nhu Figma.
+- Vector/path editing nang cao.
+- Infinite whiteboard.
+- Nhieu page tu do nhu design tool lon.
+- Them page moi ngoai `Front` va `Back`.
+
+Thu tu uu tien editor:
+
+1. Route editor rieng: `/editor/:designId`, load design tu backend va khong con phu thuoc trang detail.
+2. Editor shell layout: left panel, center canvas, right panel, floating toolbar.
+3. Page co dinh `Front` / `Back`, khong co add page.
+4. Canvas giua man hinh render dung ti le card visit da chon khi tao design.
+5. Layer system: chon layer, active layer, an/hien, khoa/mo khoa.
+6. Canvas interaction: keo tha, resize, rotate.
+7. Text tools: font search, size, weight, align, color.
+8. Shape/image tools: fill, stroke, opacity.
+9. Undo/redo.
+10. Upload anh.
+11. QR layer.
+12. Asset/icon search.
+13. AI patch sau cung.
+
+Rang buoc rieng cho page/card:
+
+- Design duoc tao theo kich thuoc card visit da chon ban dau, vi du 90x54mm, 85x55mm hoac size tuy chon neu sau nay ho tro.
+- Editor render dung ti le card do tren canvas; khong bien card thanh page tu do nhu Figma.
+- Moi design co toi da 2 mat: `front` va `back`.
+- Neu template chi co mot mat, `back` co the rong nhung van la mat co san, khong phai page moi.
+- Khong co nut them page trong MVP.
+
 ### 5.3. Quan ly layer
 
 Moi object tren canvas nen duoc coi la mot layer co id rieng. Layer can co metadata de phuc vu editor, AI va undo/redo:
@@ -1058,6 +1157,9 @@ Tam tat: tao anh hang loat, tao card thanh anh phang.
 ### Phase 2: Editor
 
 - Editor mat truoc/mat sau.
+- Page chi co `Front` va `Back`, khong them page moi trong MVP.
+- Khung edit o giua luon dung ti le/kich thuoc card visit da chon khi tao design.
+- Hai thanh cong cu hai ben va toolbar thả nổi cho thao tac nhanh tren canvas.
 - Sua text, mau, logo.
 - Undo/redo frontend.
 - Save/autosave.
@@ -1079,6 +1181,7 @@ Tam tat: tao anh hang loat, tao card thanh anh phang.
 
 ### Phase 5: AI
 
+- Lam sau khi editor thu cong, upload, QR va pre-flight da on dinh.
 - AI action patch.
 - Preview truoc khi apply.
 - Goi y mau sac/bo cuc.
@@ -1090,18 +1193,35 @@ Tam tat: tao anh hang loat, tao card thanh anh phang.
 Nguyen tac thuc hien:
 
 - Moi task chi nen co mot muc tieu ro rang.
-- Lam xong task nao thi verify task do ngay.
+- Lam xong task nao thi verify task do ngay bang nhieu lop phu hop: build/test/lint, API check, browser check, DB readback hoac workbook readback.
 - Khong lam tiep task phu thuoc neu task truoc chua pass.
-- Moi thay doi quan trong nen commit rieng.
+- Neu verify loi, dung lai de fix bug va verify lai; khong commit/push phan dang fail.
+- Moi thay doi quan trong nen commit rieng sau khi da pass verify.
+- Chi stage/commit/push cac file thuoc task da kiem thu xong; khong gom thay doi dang lam do, file ca nhan, log, prompt, memory hoac cau hinh agent.
+- Sau moi task da pass, cap nhat `Template_TestCase.xlsx` voi ket qua kiem thu tuong ung neu task co test case.
+- Truoc commit/push phai kiem tra `git status`, staged files va secret scan co ban.
 - Khong hardcode secret, API key, token, password vao source code.
 
 Definition of Done cho moi task:
 
 - Code chay duoc.
-- Test, API check, manual check hoac browser check pass.
+- Test, API check, manual check, browser check, DB readback hoac workbook readback pass theo pham vi task.
+- Bug phat hien trong qua trinh verify da duoc fix va verify lai.
+- `Template_TestCase.xlsx` duoc cap nhat neu task co test case lien quan.
 - Khong lam vo chuc nang da pass truoc do.
 - Khong dua `.env`, log, prompt, secret, memory hoac cau hinh ca nhan vao git.
+- Khong dua thong tin ca nhan hoac file harness local nhu `.agents/`, `.codex/`, `.claude/`, `.cursor/`, `.copilot/`, `.windsurf/`, `.gemini/`, `.continue/`, `.aider*` vao GitHub.
+- Commit/push chi chua phan da pass verify cua task hien tai.
 - Co the clone/mo lai project va chay lai theo huong dan.
+
+Quy trinh dong goi sau moi task:
+
+1. Chay cac lenh verify phu hop va ghi lai ket qua ngan gon.
+2. Cap nhat `Template_TestCase.xlsx` neu co test case moi hoac ket qua kiem thu moi.
+3. Chay secret scan co ban tren file se stage.
+4. Kiem tra `git status` va `git diff --cached` de chac chan khong stage file ca nhan/harness/secret.
+5. Commit voi message mo ta thay doi ky thuat, khong nhac den AI/agent.
+6. Push commit sau khi commit da pass verify va staged files sach.
 
 #### Nhom 1: Sap xep nen project
 
@@ -1168,15 +1288,32 @@ Definition of Done cho moi task:
 | 39 | Tao layout chinh | UI hien khong loi console |
 | 40 | Tao route Home | Vao `/` duoc |
 | 41 | Tao route Templates | Render list template tu API |
-| 42 | Tao route Editor | Vao `/editor/:designId` khong loi |
+| 42 | Tao route Editor | Vao `/editor/:designId` khong loi va load dung draft |
 | 43 | Cau hinh CORS backend cho FE local | FE `localhost:5173` goi BE `localhost:8080` duoc |
 
-#### Nhom 6: Canvas editor MVP
+#### Nhom 5A: Editor route va shell MVP
+
+Nhom nay la cong viec nen lam tiep ngay. Muc tieu la bien trang sua draft thanh editor that su, nhung chua lam canvas phuc tap.
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
-| 44 | Chot canvas library: Fabric.js hoac Konva.js | Ve duoc object mau |
-| 45 | Render khung card 90x54mm | Canvas dung ti le |
+| 42A | Tao `/editor/:designId` va dieu huong tu draft/template sang editor | Mo URL editor load dung design id |
+| 42B | Tach renderer canvas hien co thanh component dung lai | Template detail, draft detail va editor render cung mot cach |
+| 42C | Tao editor shell 2 ben va canvas giua | Co left sidebar, center canvas, right properties |
+| 42D | Tao floating toolbar ban dau | Hien Select, Text, Shape, Image, QR, Icon; chua can day du hanh vi |
+| 42E | Tao page switch co dinh `Front` / `Back` | Chuyen duoc 2 mat va khong co nut them page |
+| 42F | Giu card giua man hinh theo `widthMm` / `heightMm` | Card dung ti le kich thuoc card visit da chon |
+| 42G | Luu text edit qua design API | Refresh editor van giu noi dung da sua |
+| 42H | Verify editor shell | `npm run build` pass, browser vao `/editor/:designId` khong loi console |
+
+#### Nhom 6: Canvas editor MVP
+
+Chi lam nhom nay sau khi 42A-42H pass. Neu can keo/resize/rotate that, chot Fabric.js truoc khi viet interaction de tranh tu lam editor control qua nhieu.
+
+| Buoc | Viec lam | Kiem thu |
+| --- | --- | --- |
+| 44 | Chot canvas library: uu tien Fabric.js, Konva.js la phuong an du phong | Ve duoc object mau va export JSON duoc |
+| 45 | Render khung card theo kich thuoc da chon | Canvas dung ti le card visit |
 | 46 | Render text layer tu JSON | Text hien dung vi tri |
 | 47 | Render image layer tu JSON | Anh hien dung URL |
 | 48 | Render shape layer | Shape hien dung mau/vi tri |
@@ -1188,6 +1325,40 @@ Definition of Done cho moi task:
 | 54 | Undo frontend | Quay lai state truoc |
 | 55 | Redo frontend | Khoi phuc state sau |
 | 56 | Hien safe zone va bleed zone | Bat/tat guide duoc |
+
+#### Nhom 6A: Editor layer va properties nang cao
+
+Nhom nay lam sau buoc 56 va truoc khi coi editor la Canva/Figma-lite. Cac buoc 42A-42H tao shell toi thieu; nhom 6A bien shell do thanh editor dung duoc hang ngay.
+
+| Buoc | Viec lam | Kiem thu |
+| --- | --- | --- |
+| 56A | Hoan thien editor shell responsive | Left sidebar, center canvas, right properties khong tran tren desktop/mobile |
+| 56B | Gan floating toolbar voi tool state | Chon duoc select, text, shape, image, QR, icon |
+| 56C | Tao bottom quick color bar | Doi nhanh fill/stroke tu recent colors |
+| 56D | Tao layer panel | Click layer tren panel thi canvas select dung layer |
+| 56E | An/hien layer | Layer hidden khong render nhung van con trong JSON |
+| 56F | Khoa/mo khoa layer | Layer locked khong keo/sua duoc |
+| 56G | Sap xep layer tren/duoi | `zIndex` doi dung va render dung thu tu |
+| 56H | Chon nhieu layer | Multi-select keo ca nhom va bo chon dung |
+| 56I | Resize layer bang handle | `width`/`height` cap nhat dung |
+| 56J | Rotate layer bang handle | `rotation` cap nhat dung |
+| 56K | Properties position panel | Sua X/Y/W/H/rotate bang input cap nhat canvas |
+| 56L | Text properties panel | Doi font, size, weight, align, line-height, letter spacing |
+| 56M | Fill/stroke/shadow panel | Doi mau, opacity, stroke width, shadow co preview |
+| 56N | Font search dropdown | Search font local va apply vao text layer |
+| 56O | Duplicate/delete layer | Copy/xoa layer va undo/redo hoat dong |
+| 56P | Keyboard shortcut co ban | Delete, Ctrl+Z, Ctrl+Y, Ctrl+D hoat dong |
+| 56Q | Zoom/pan canvas | Zoom khong lam lech toa do layer |
+| 56R | Luu UI editor vao design JSON | Refresh van giu layer order, lock, visible, style |
+| 56S | Gioi han page Front/Back | Chuyen duoc mat truoc/sau va khong co nut them page |
+
+Moc hoan thien:
+
+- Het buoc 56: editor MVP co the sua card co ban.
+- Het buoc 56R: editor dat muc Canva/Figma-lite cho thao tac layer co ban.
+- Het buoc 62: editor co upload anh va QR.
+- Het buoc 88: editor co asset/icon search basic.
+- Het buoc 91: editor co asset/icon search thong minh bang embedding.
 
 #### Nhom 7: Upload, asset va QR
 
