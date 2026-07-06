@@ -51,6 +51,10 @@ function layerClass(layer: CanvasLayer): string {
     : "canvas-layer--unknown";
 }
 
+function layerIsVisible(layer: CanvasLayer): boolean {
+  return layer.visible !== false && layer.hidden !== true;
+}
+
 function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const x = numberValue(layer.x, 8);
   const y = numberValue(layer.y, 8);
@@ -84,22 +88,23 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
 
 <template>
   <div class="canvas-frame" :style="frameStyle" :aria-label="label">
-    <div
-      v-for="(layer, index) in layers"
-      :key="index"
-      class="canvas-layer"
-      :class="[layerClass(layer), { 'canvas-layer--selected': index === selectedLayerIndex }]"
-      :style="layerStyle(layer)"
-    >
-      <img
-        v-if="layer.type === 'image' && layerImageSource(layer)"
-        :src="layerImageSource(layer)"
-        :alt="layerText(layer)"
-      />
-      <template v-else>
-        {{ layerText(layer) }}
-      </template>
-    </div>
+    <template v-for="(layer, index) in layers" :key="index">
+      <div
+        v-if="layerIsVisible(layer)"
+        class="canvas-layer"
+        :class="[layerClass(layer), { 'canvas-layer--selected': index === selectedLayerIndex }]"
+        :style="layerStyle(layer)"
+      >
+        <img
+          v-if="layer.type === 'image' && layerImageSource(layer)"
+          :src="layerImageSource(layer)"
+          :alt="layerText(layer)"
+        />
+        <template v-else>
+          {{ layerText(layer) }}
+        </template>
+      </div>
+    </template>
     <span v-if="layers.length === 0" class="canvas-empty">{{ emptyLabel }}</span>
   </div>
 </template>

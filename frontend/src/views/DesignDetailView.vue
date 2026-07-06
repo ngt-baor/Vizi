@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ImageIcon, MousePointer2, QrCode, Shapes, Sticker, Type } from "@lucide/vue";
+import { Eye, EyeOff, ImageIcon, MousePointer2, QrCode, Shapes, Sticker, Type } from "@lucide/vue";
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { deleteDesign, getDesign, updateDesign, type DesignDetail } from "../api";
@@ -114,6 +114,10 @@ function optionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function layerIsVisible(layer: CanvasLayer): boolean {
+  return layer.visible !== false && layer.hidden !== true;
+}
+
 function parseCanvasLayers(canvasJson: string): CanvasLayer[] {
   try {
     const canvas = JSON.parse(canvasJson) as { layers?: unknown };
@@ -141,6 +145,17 @@ function selectTool(tool: EditorTool): void {
 }
 
 function selectLayer(index: number): void {
+  selectedLayerIndex.value = index;
+  saveMessage.value = "";
+}
+
+function toggleLayerVisibility(index: number): void {
+  const layer = editableLayers.value[index];
+  if (!layer) {
+    return;
+  }
+
+  editableLayers.value[index] = { ...layer, visible: !layerIsVisible(layer) };
   selectedLayerIndex.value = index;
   saveMessage.value = "";
 }
@@ -270,17 +285,36 @@ onMounted(async () => {
             <h2>Layers</h2>
             <ol class="editor-layer-list">
               <li v-for="(layer, index) in displayedCanvasLayers" :key="index">
-                <button
-                  type="button"
-                  class="editor-layer-button"
+                <div
+                  class="editor-layer-row"
                   :class="{ active: selectedLayerIndex === index }"
-                  :aria-pressed="selectedLayerIndex === index"
-                  :aria-label="`Select layer ${index + 1} ${layer.type || 'Layer'}`"
-                  @click="selectLayer(index)"
                 >
-                  <span>{{ index + 1 }}</span>
-                  <strong>{{ layer.type || "Layer" }}</strong>
-                </button>
+                  <button
+                    type="button"
+                    class="editor-layer-button"
+                    :aria-pressed="selectedLayerIndex === index"
+                    :aria-label="`Select layer ${index + 1} ${layer.type || 'Layer'}`"
+                    @click="selectLayer(index)"
+                  >
+                    <span>{{ index + 1 }}</span>
+                    <strong>{{ layer.type || "Layer" }}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    class="editor-layer-toggle"
+                    :aria-pressed="!layerIsVisible(layer)"
+                    :aria-label="`${layerIsVisible(layer) ? 'Hide' : 'Show'} layer ${index + 1}`"
+                    :title="layerIsVisible(layer) ? 'Hide layer' : 'Show layer'"
+                    @click="toggleLayerVisibility(index)"
+                  >
+                    <component
+                      :is="layerIsVisible(layer) ? Eye : EyeOff"
+                      :size="16"
+                      :stroke-width="1.8"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </div>
               </li>
             </ol>
             <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
