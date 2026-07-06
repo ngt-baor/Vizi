@@ -259,6 +259,42 @@ class DesignApiIntegrationTests {
     }
 
     @Test
+    void ownerCanRunPreflightAndAnotherUserCannot() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        userRepository.save(new User("other@example.test", "test-hash", "Other"));
+        var template = templateRepository.save(new Template(
+                "Preflight Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[{\"type\":\"text\",\"text\":\"Too close\",\"x\":1,\"y\":1,\"width\":30,\"height\":10}]}",
+                true
+        ));
+        var createResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createResponse.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(post("/api/designs/" + designId + "/preflight")
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(false))
+                .andExpect(jsonPath("$.issues.length()").value(1))
+                .andExpect(jsonPath("$.issues[0].level").value("ERROR"))
+                .andExpect(jsonPath("$.issues[0].code").value("LAYER_OUTSIDE_SAFE_ZONE"))
+                .andExpect(jsonPath("$.issues[0].layerIndex").value(0));
+
+        mockMvc.perform(post("/api/designs/" + designId + "/preflight")
+                        .with(user("other@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void ownerCanDeleteDesignAndOtherUserCannotDeleteIt() throws Exception {
         userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
         userRepository.save(new User("other@example.test", "test-hash", "Other"));

@@ -4,6 +4,8 @@ import java.util.List;
 
 import jakarta.validation.Valid;
 
+import com.example.vizi.preflight.PreflightReport;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -55,5 +57,10 @@ class DesignController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void deleteDesign(@PathVariable Long designId, Authentication authentication) {
         designService.deleteOwnedDesign(designId, authentication.getName());
+    }
+
+    @PostMapping("/{designId}/preflight")
+    PreflightReport runPreflight(@PathVariable Long designId, Authentication authentication) {
+        return designService.runPreflight(designId, authentication.getName());
     }
 }

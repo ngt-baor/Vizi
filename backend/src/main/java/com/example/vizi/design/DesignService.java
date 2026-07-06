@@ -3,6 +3,8 @@ package com.example.vizi.design;
 import java.util.List;
 
 import com.example.vizi.auth.AuthService;
+import com.example.vizi.preflight.PreflightReport;
+import com.example.vizi.preflight.PreflightService;
 import com.example.vizi.template.TemplateService;
 
 import org.springframework.http.HttpStatus;
@@ -21,19 +23,22 @@ class DesignService {
     private final TemplateService templateService;
     private final AuthService authService;
     private final ObjectMapper objectMapper;
+    private final PreflightService preflightService;
 
     DesignService(
             DesignRepository designRepository,
             DesignSnapshotRepository designSnapshotRepository,
             TemplateService templateService,
             AuthService authService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            PreflightService preflightService
     ) {
         this.designRepository = designRepository;
         this.designSnapshotRepository = designSnapshotRepository;
         this.templateService = templateService;
         this.authService = authService;
         this.objectMapper = objectMapper;
+        this.preflightService = preflightService;
     }
 
     List<DesignListItem> listOwnedDesigns(String email) {
@@ -75,6 +80,17 @@ class DesignService {
         var design = designRepository.findByIdAndUser_Id(designId, user.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
         designRepository.delete(design);
+    }
+
+    PreflightReport runPreflight(Long designId, String email) {
+        var user = authService.requireUser(email);
+        var design = designRepository.findByIdAndUser_Id(designId, user.id())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
+        return preflightService.check(
+                design.canvasJson(),
+                design.widthMm().doubleValue(),
+                design.heightMm().doubleValue()
+        );
     }
 
     private void validateCanvas(String canvasJson) {
