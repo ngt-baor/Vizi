@@ -1103,6 +1103,12 @@ onUnmounted(() => {
         <div class="editor-header-actions">
           <span v-if="saveMessage" class="save-status" role="status">{{ saveMessage }}</span>
           <span v-else-if="!saveError" class="muted">Saved draft</span>
+          <RouterLink
+            class="secondary-action"
+            :to="{ name: 'checkout', params: { designId: design.id } }"
+          >
+            Checkout
+          </RouterLink>
           <button class="primary-action" type="button" :disabled="saving" @click="saveDraft">
             {{ saving ? "Saving..." : "Save draft" }}
           </button>
@@ -1759,6 +1765,12 @@ onUnmounted(() => {
         </p>
 
         <div class="detail-actions">
+          <RouterLink
+            class="secondary-action"
+            :to="{ name: 'checkout', params: { designId: design.id } }"
+          >
+            Checkout
+          </RouterLink>
           <button class="primary-action" type="button" :disabled="saving" @click="saveDraft">
             {{ saving ? "Saving..." : "Save draft" }}
           </button>

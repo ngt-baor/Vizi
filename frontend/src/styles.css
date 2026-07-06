@@ -1215,6 +1215,110 @@ h2 {
   padding: clamp(22px, 4vw, 42px);
 }
 
+.checkout-view {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 22px;
+}
+
+.checkout-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.checkout-header h1 {
+  font-size: clamp(34px, 5vw, 56px);
+}
+
+.checkout-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(280px, 0.7fr);
+  gap: 22px;
+  align-items: stretch;
+}
+
+.checkout-preview,
+.checkout-panel {
+  border: 1px solid rgba(122, 93, 46, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 24px 70px rgba(93, 69, 33, 0.1);
+}
+
+.checkout-preview {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  padding: 24px;
+}
+
+.checkout-panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: clamp(20px, 4vw, 32px);
+}
+
+.checkout-panel label {
+  display: grid;
+  gap: 8px;
+  color: #4d4437;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.checkout-panel select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(122, 93, 46, 0.2);
+  border-radius: 8px;
+  background: #fff;
+  color: #2f281c;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.checkout-toggle {
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+}
+
+.checkout-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2f281c;
+}
+
+.checkout-summary {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 0;
+  border-top: 1px solid rgba(122, 93, 46, 0.14);
+  padding-top: 16px;
+}
+
+.checkout-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.checkout-summary dt,
+.checkout-summary dd {
+  margin: 0;
+  color: #655a4b;
+  font-size: 13px;
+}
+
+.checkout-summary dd {
+  color: #2f281c;
+  font-weight: 800;
+  text-align: right;
+}
+
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1457,8 +1561,23 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .checkout-header,
+  .checkout-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
   .detail-preview {
     min-height: 220px;
+  }
+
+  .checkout-preview {
+    min-height: 260px;
+    padding: 18px;
   }
 
   .editor-header,
