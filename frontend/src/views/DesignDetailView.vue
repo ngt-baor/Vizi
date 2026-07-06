@@ -8,6 +8,7 @@ import CanvasPreview from "../components/CanvasPreview.vue";
 type CanvasLayer = Record<string, unknown> & {
   type?: string;
 };
+type EditorPage = "front" | "back";
 
 const route = useRoute();
 const router = useRouter();
@@ -20,6 +21,11 @@ const deleting = ref(false);
 const confirmingDelete = ref(false);
 const saveMessage = ref("");
 const saveError = ref("");
+const selectedPage = ref<EditorPage>("front");
+const editorPages: { id: EditorPage; label: string }[] = [
+  { id: "front", label: "Front" },
+  { id: "back", label: "Back" },
+];
 const editorTools = [
   { label: "Select", icon: MousePointer2 },
   { label: "Text", icon: Type },
@@ -35,9 +41,18 @@ const designId = computed(() => {
 });
 const isEditorRoute = computed(() => route.name === "editor");
 const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value);
-const canvasLayerCount = computed(() => canvasLayers.value.length);
+const selectedPageLabel = computed(() =>
+  editorPages.find((page) => page.id === selectedPage.value)?.label ?? "Front",
+);
+const editorCanvasLayers = computed<CanvasLayer[]>(() =>
+  selectedPage.value === "front" ? canvasLayers.value : [],
+);
+const displayedCanvasLayers = computed<CanvasLayer[]>(() =>
+  isEditorRoute.value ? editorCanvasLayers.value : canvasLayers.value,
+);
+const canvasLayerCount = computed(() => displayedCanvasLayers.value.length);
 const firstTextLayerIndex = computed(() =>
-  editableLayers.value.findIndex((layer) => layer.type === "text"),
+  displayedCanvasLayers.value.findIndex((layer) => layer.type === "text"),
 );
 const firstTextLayerText = computed({
   get: () => {
@@ -178,14 +193,29 @@ onMounted(async () => {
       <div class="editor-shell">
         <aside class="editor-sidebar editor-sidebar--left" aria-label="Editor sidebar">
           <section class="editor-section">
+            <h2>Pages</h2>
+            <div class="editor-page-switch" aria-label="Card sides">
+              <button
+                v-for="page in editorPages"
+                :key="page.id"
+                type="button"
+                :class="{ active: selectedPage === page.id }"
+                :aria-pressed="selectedPage === page.id"
+                @click="selectedPage = page.id"
+              >
+                {{ page.label }}
+              </button>
+            </div>
+          </section>
+          <section class="editor-section">
             <h2>Layers</h2>
             <ol class="editor-layer-list">
-              <li v-for="(layer, index) in canvasLayers" :key="index">
+              <li v-for="(layer, index) in displayedCanvasLayers" :key="index">
                 <span>{{ index + 1 }}</span>
                 <strong>{{ layer.type || "Layer" }}</strong>
               </li>
             </ol>
-            <p v-if="canvasLayers.length === 0" class="muted">No layers</p>
+            <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
           </section>
           <section class="editor-section">
             <h2>Assets</h2>
@@ -206,11 +236,11 @@ onMounted(async () => {
             </button>
           </div>
           <CanvasPreview
-            :layers="canvasLayers"
+            :layers="displayedCanvasLayers"
             :width-mm="design.widthMm"
             :height-mm="design.heightMm"
             label="Draft canvas preview"
-            empty-label="Draft"
+            :empty-label="selectedPageLabel"
           />
         </section>
 
@@ -221,6 +251,10 @@ onMounted(async () => {
               <div>
                 <dt>Size</dt>
                 <dd>{{ design.widthMm }} x {{ design.heightMm }} mm</dd>
+              </div>
+              <div>
+                <dt>Side</dt>
+                <dd>{{ selectedPageLabel }}</dd>
               </div>
               <div>
                 <dt>Layers</dt>
