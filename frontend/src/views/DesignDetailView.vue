@@ -2,14 +2,18 @@
 import {
   ArrowDown,
   ArrowUp,
+  Copy,
   Eye,
   EyeOff,
   ImageIcon,
   Lock,
   MousePointer2,
   QrCode,
+  RotateCcw,
+  RotateCw,
   Shapes,
   Sticker,
+  Trash2,
   Type,
   Unlock,
 } from "@lucide/vue";
@@ -42,6 +46,8 @@ const activeTool = ref<EditorTool>("select");
 const selectedLayerIndex = ref(0);
 const selectedLayerIndexes = ref<number[]>([0]);
 const activeColorTarget = ref<ColorTarget>("fill");
+const undoLayerStack = ref<CanvasLayer[][]>([]);
+const redoLayerStack = ref<CanvasLayer[][]>([]);
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
@@ -133,6 +139,14 @@ const selectedLayerCanEditText = computed(() => {
   return selectedLayerCanEditGeometry.value && layer?.type === "text";
 });
 const selectedLayerCanEditAppearance = computed(() => selectedLayerCanEditGeometry.value);
+const canUndoLayerChange = computed(() => undoLayerStack.value.length > 0);
+const canRedoLayerChange = computed(() => redoLayerStack.value.length > 0);
+const canDuplicateSelectedLayers = computed(() =>
+  selectedPage.value === "front" && selectedLayerIndexes.value.length > 0,
+);
+const canDeleteSelectedLayers = computed(() =>
+  selectedPage.value === "front" && selectedLayerIndexes.value.length > 0,
+);
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
     return `${selectedLayerIndexes.value.length} layers selected`;
@@ -172,8 +186,9 @@ const firstTextLayerText = computed({
     const textField = typeof layer.text === "string" || typeof layer.value !== "string"
       ? "text"
       : "value";
-    editableLayers.value[index] = { ...layer, [textField]: value };
-    saveMessage.value = "";
+    const layers = [...editableLayers.value];
+    layers[index] = { ...layer, [textField]: value };
+    commitLayers(layers);
   },
 });
 function isCanvasLayer(layer: unknown): layer is CanvasLayer {
@@ -211,6 +226,70 @@ function serializeCanvas(): string {
     // Invalid saved JSON falls back to the validated canvas shape below.
   }
   return JSON.stringify({ layers: editableLayers.value });
+}
+
+function cloneLayers(layers: CanvasLayer[]): CanvasLayer[] {
+  return JSON.parse(JSON.stringify(layers)) as CanvasLayer[];
+}
+
+function clampSelectionToLayers(): void {
+  const lastIndex = editableLayers.value.length - 1;
+  if (lastIndex < 0) {
+    selectedLayerIndex.value = 0;
+    selectedLayerIndexes.value = [];
+    return;
+  }
+
+  selectedLayerIndexes.value = selectedLayerIndexes.value
+    .filter((index) => index >= 0 && index <= lastIndex)
+    .sort((left, right) => left - right);
+  if (selectedLayerIndexes.value.length === 0) {
+    selectedLayerIndex.value = Math.min(Math.max(selectedLayerIndex.value, 0), lastIndex);
+    selectedLayerIndexes.value = [selectedLayerIndex.value];
+    return;
+  }
+
+  selectedLayerIndex.value = selectedLayerIndexes.value.at(-1)!;
+}
+
+function rememberLayerState(): void {
+  undoLayerStack.value = [...undoLayerStack.value.slice(-49), cloneLayers(editableLayers.value)];
+  redoLayerStack.value = [];
+}
+
+function commitLayers(nextLayers: CanvasLayer[], nextSelectedIndexes = selectedLayerIndexes.value): void {
+  rememberLayerState();
+  editableLayers.value = nextLayers;
+  selectedLayerIndexes.value = nextSelectedIndexes;
+  selectedLayerIndex.value = nextSelectedIndexes.at(-1) ?? 0;
+  clampSelectionToLayers();
+  saveMessage.value = "";
+}
+
+function restoreLayerState(layers: CanvasLayer[]): void {
+  editableLayers.value = cloneLayers(layers);
+  clampSelectionToLayers();
+  saveMessage.value = "";
+}
+
+function undoLayerChange(): void {
+  const previous = undoLayerStack.value.at(-1);
+  if (!previous) {
+    return;
+  }
+  undoLayerStack.value = undoLayerStack.value.slice(0, -1);
+  redoLayerStack.value = [...redoLayerStack.value.slice(-49), cloneLayers(editableLayers.value)];
+  restoreLayerState(previous);
+}
+
+function redoLayerChange(): void {
+  const next = redoLayerStack.value.at(-1);
+  if (!next) {
+    return;
+  }
+  redoLayerStack.value = redoLayerStack.value.slice(0, -1);
+  undoLayerStack.value = [...undoLayerStack.value.slice(-49), cloneLayers(editableLayers.value)];
+  restoreLayerState(next);
 }
 
 function selectTool(tool: EditorTool): void {
@@ -260,6 +339,7 @@ function startLayerDrag(index: number, event: PointerEvent): void {
   }
 
   event.preventDefault();
+  rememberLayerState();
   const frameRect = frame.getBoundingClientRect();
   const startX = event.clientX;
   const startY = event.clientY;
@@ -323,6 +403,7 @@ function startLayerResize(index: number, event: PointerEvent): void {
   }
 
   event.preventDefault();
+  rememberLayerState();
   const frameRect = frame.getBoundingClientRect();
   const startX = event.clientX;
   const startY = event.clientY;
@@ -363,6 +444,7 @@ function startLayerRotate(index: number, event: PointerEvent): void {
   }
 
   event.preventDefault();
+  rememberLayerState();
   const layerRect = layerElement.getBoundingClientRect();
   const centerX = layerRect.left + layerRect.width / 2;
   const centerY = layerRect.top + layerRect.height / 2;
@@ -444,11 +526,12 @@ function updateSelectedLayerNumber(field: "x" | "y" | "width" | "height" | "rota
     nextValue = clamp(value, 3, 100 - numberValue(layer.y, 8));
   }
 
-  editableLayers.value[selectedLayerIndex.value] = {
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = {
     ...layer,
     [field]: Math.round(nextValue * 100) / 100,
   };
-  saveMessage.value = "";
+  commitLayers(layers);
 }
 
 function selectedLayerString(field: string, fallback: string): string {
@@ -488,13 +571,14 @@ function updateSelectedTextField(field: "fontFamily" | "fontSize" | "fontWeight"
     return;
   }
 
-  editableLayers.value[selectedLayerIndex.value] = {
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = {
     ...layer,
     [field]: field === "fontSize"
       ? clamp(value as number, 6, 120)
       : field === "fontWeight" ? clamp(value as number, 100, 900) : value,
   };
-  saveMessage.value = "";
+  commitLayers(layers);
 }
 
 function updateSelectedAppearanceColor(target: ColorTarget, event: Event): void {
@@ -507,8 +591,9 @@ function updateSelectedAppearanceColor(target: ColorTarget, event: Event): void 
   const field = target === "stroke"
     ? "stroke"
     : layer.type === "text" ? "color" : "fill";
-  editableLayers.value[selectedLayerIndex.value] = { ...layer, [field]: value };
-  saveMessage.value = "";
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = { ...layer, [field]: value };
+  commitLayers(layers);
 }
 
 function updateSelectedAppearanceNumber(field: "opacity" | "strokeWidth", event: Event): void {
@@ -518,13 +603,14 @@ function updateSelectedAppearanceNumber(field: "opacity" | "strokeWidth", event:
     return;
   }
 
-  editableLayers.value[selectedLayerIndex.value] = {
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = {
     ...layer,
     [field]: field === "opacity"
       ? Math.round(clamp(value, 0, 1) * 100) / 100
       : Math.round(clamp(value, 0, 20) * 100) / 100,
   };
-  saveMessage.value = "";
+  commitLayers(layers);
 }
 
 function updateSelectedEffectColor(event: Event): void {
@@ -533,11 +619,12 @@ function updateSelectedEffectColor(event: Event): void {
     return;
   }
 
-  editableLayers.value[selectedLayerIndex.value] = {
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = {
     ...layer,
     shadowColor: (event.target as HTMLInputElement).value,
   };
-  saveMessage.value = "";
+  commitLayers(layers);
 }
 
 function updateSelectedEffectNumber(
@@ -550,13 +637,14 @@ function updateSelectedEffectNumber(
     return;
   }
 
-  editableLayers.value[selectedLayerIndex.value] = {
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = {
     ...layer,
     [field]: field === "shadowX" || field === "shadowY"
       ? Math.round(clamp(value, -50, 50) * 100) / 100
       : Math.round(clamp(value, 0, 50) * 100) / 100,
   };
-  saveMessage.value = "";
+  commitLayers(layers);
 }
 
 function updateSelectedShadowOpacity(event: Event): void {
@@ -566,11 +654,12 @@ function updateSelectedShadowOpacity(event: Event): void {
     return;
   }
 
-  editableLayers.value[selectedLayerIndex.value] = {
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = {
     ...layer,
     shadowOpacity: Math.round(clamp(value, 0, 100)) / 100,
   };
-  saveMessage.value = "";
+  commitLayers(layers);
 }
 
 function toggleLayerVisibility(index: number): void {
@@ -579,10 +668,9 @@ function toggleLayerVisibility(index: number): void {
     return;
   }
 
-  editableLayers.value[index] = { ...layer, visible: !layerIsVisible(layer) };
-  selectedLayerIndex.value = index;
-  selectedLayerIndexes.value = [index];
-  saveMessage.value = "";
+  const layers = [...editableLayers.value];
+  layers[index] = { ...layer, visible: !layerIsVisible(layer) };
+  commitLayers(layers, [index]);
 }
 
 function toggleLayerLock(index: number): void {
@@ -591,10 +679,9 @@ function toggleLayerLock(index: number): void {
     return;
   }
 
-  editableLayers.value[index] = { ...layer, locked: !layerIsLocked(layer) };
-  selectedLayerIndex.value = index;
-  selectedLayerIndexes.value = [index];
-  saveMessage.value = "";
+  const layers = [...editableLayers.value];
+  layers[index] = { ...layer, locked: !layerIsLocked(layer) };
+  commitLayers(layers, [index]);
 }
 
 function moveLayer(index: number, direction: -1 | 1): void {
@@ -605,12 +692,50 @@ function moveLayer(index: number, direction: -1 | 1): void {
 
   const layers = [...editableLayers.value];
   [layers[index], layers[nextIndex]] = [layers[nextIndex], layers[index]];
-  editableLayers.value = layers;
-  selectedLayerIndex.value = nextIndex;
-  selectedLayerIndexes.value = selectedLayerIndexes.value
+  const nextSelectedIndexes = selectedLayerIndexes.value
     .map((selected) => selected === index ? nextIndex : selected === nextIndex ? index : selected)
     .sort((left, right) => left - right);
-  saveMessage.value = "";
+  commitLayers(layers, nextSelectedIndexes);
+}
+
+function duplicateSelectedLayers(): void {
+  if (!canDuplicateSelectedLayers.value) {
+    return;
+  }
+
+  const selectedIndexes = selectedLayerIndexes.value
+    .filter((index) => editableLayers.value[index])
+    .sort((left, right) => left - right);
+  if (selectedIndexes.length === 0) {
+    return;
+  }
+
+  const duplicates = selectedIndexes.map((index) => {
+    const layer = cloneLayers([editableLayers.value[index]])[0];
+    const width = numberValue(layer.width, layerDefaultSize(layer, "width"));
+    const height = numberValue(layer.height, layerDefaultSize(layer, "height"));
+    return {
+      ...layer,
+      x: Math.round(clamp(numberValue(layer.x, 8) + 4, 0, 100 - width) * 100) / 100,
+      y: Math.round(clamp(numberValue(layer.y, 8) + 4, 0, 100 - height) * 100) / 100,
+    };
+  });
+  const insertAt = selectedIndexes.at(-1)! + 1;
+  const layers = [...editableLayers.value];
+  layers.splice(insertAt, 0, ...duplicates);
+  commitLayers(layers, duplicates.map((_, offset) => insertAt + offset));
+}
+
+function deleteSelectedLayers(): void {
+  if (!canDeleteSelectedLayers.value) {
+    return;
+  }
+
+  const selected = new Set(selectedLayerIndexes.value);
+  const firstSelected = Math.min(...selectedLayerIndexes.value);
+  const layers = editableLayers.value.filter((_, index) => !selected.has(index));
+  const nextIndex = layers.length > 0 ? Math.min(firstSelected, layers.length - 1) : -1;
+  commitLayers(layers, nextIndex >= 0 ? [nextIndex] : []);
 }
 
 function applyQuickColor(color: string): void {
@@ -625,8 +750,9 @@ function applyQuickColor(color: string): void {
   const field = activeColorTarget.value === "stroke"
     ? "stroke"
     : layer.type === "text" ? "color" : "fill";
-  editableLayers.value[selectedLayerIndex.value] = { ...layer, [field]: color };
-  saveMessage.value = "";
+  const layers = [...editableLayers.value];
+  layers[selectedLayerIndex.value] = { ...layer, [field]: color };
+  commitLayers(layers);
 }
 
 async function saveDraft(): Promise<void> {
@@ -641,6 +767,8 @@ async function saveDraft(): Promise<void> {
   try {
     const saved = await updateDesign(design.value.id, design.value.name, serializeCanvas());
     design.value = saved;
+    undoLayerStack.value = [];
+    redoLayerStack.value = [];
     saveMessage.value = `Draft #${saved.id} saved`;
   } catch (unknownError) {
     saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot save draft";
@@ -684,6 +812,8 @@ onMounted(async () => {
   try {
     design.value = await getDesign(designId.value);
     editableLayers.value = parseCanvasLayers(design.value.canvasJson);
+    undoLayerStack.value = [];
+    redoLayerStack.value = [];
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot load draft";
   } finally {
@@ -736,6 +866,48 @@ onMounted(async () => {
           </section>
           <section class="editor-section">
             <h2>Layers</h2>
+            <div class="editor-layer-tools" aria-label="Layer edit actions">
+              <button
+                type="button"
+                :disabled="!canUndoLayerChange"
+                aria-label="Undo layer change"
+                title="Undo"
+                @click="undoLayerChange"
+              >
+                <RotateCcw :size="16" :stroke-width="1.8" aria-hidden="true" />
+                <span>Undo</span>
+              </button>
+              <button
+                type="button"
+                :disabled="!canRedoLayerChange"
+                aria-label="Redo layer change"
+                title="Redo"
+                @click="redoLayerChange"
+              >
+                <RotateCw :size="16" :stroke-width="1.8" aria-hidden="true" />
+                <span>Redo</span>
+              </button>
+              <button
+                type="button"
+                :disabled="!canDuplicateSelectedLayers"
+                aria-label="Duplicate selected layer"
+                title="Duplicate selected layer"
+                @click="duplicateSelectedLayers"
+              >
+                <Copy :size="16" :stroke-width="1.8" aria-hidden="true" />
+                <span>Copy</span>
+              </button>
+              <button
+                type="button"
+                :disabled="!canDeleteSelectedLayers"
+                aria-label="Delete selected layer"
+                title="Delete selected layer"
+                @click="deleteSelectedLayers"
+              >
+                <Trash2 :size="16" :stroke-width="1.8" aria-hidden="true" />
+                <span>Delete</span>
+              </button>
+            </div>
             <ol class="editor-layer-list">
               <li v-for="(layer, index) in displayedCanvasLayers" :key="index">
                 <div
