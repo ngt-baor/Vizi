@@ -111,7 +111,8 @@ Quyet dinh cap nhat cho huong editor:
 - Vizi se tu xay `Vizi Editor Lite` tren Vue + canvas library, giu dung domain card visit kich thuoc co dinh.
 - Nen uu tien Fabric.js truoc neu muon co san select, drag, resize, rotate, image, text va JSON serialization.
 - Konva.js la phuong an thay the neu can scene graph gon hon, nhung se phai tu lam nhieu control editor hon.
-- Giao dien editor nen la phong cach sang mau, professional luxury; khong copy nguyen dark UI trong anh tham khao. Anh tham khao chi dung de lay layout va workflow.
+- Giao dien editor nen la phong cach professional luxury va full-screen. Huong dung: hai sidebar trai/phai mau toi, canvas card visit nam giua tren workspace sang/xam nhat, toolbar tha noi tren canvas va quick color bar phia duoi giong workflow Penpot/Figma.
+- Vao trang edit phai cam giac la cong cu thiet ke chuyen nghiep, khong phai trang form web thong thuong. Header/nav marketing nen toi gian hoac an tren editor de uu tien full man hinh.
 - AI de sau editor thu cong. Thu tu dung la lam editor, layer, save/load, upload, QR, pre-flight truoc; AI patch/generate chi lam khi editor da on dinh.
 
 ### 5.2.1. Vizi Editor Lite
@@ -155,6 +156,8 @@ Vizi Editor
 
 Tinh nang nen giu tu cac anh tham khao:
 
+- Editor full man hinh: left sidebar + center workspace + right sidebar chiem toan bo viewport.
+- Hai panel ben trai/phai nen dung nen toi, chu sang, highlight mau cyan/champagne vua du. O giua la workspace sang/xam nhat de card visit noi bat.
 - Layer panel ben trai: danh sach layer, chon layer, an/hien, khoa/mo khoa, doi thu tu.
 - Hai thanh cong cu hai ben: ben trai cho page/layer/asset, ben phai cho thuoc tinh layer dang chon.
 - Toolbar thả nổi tren canvas: select, board/card, shape, circle, text, image, pen/path co ban, icon/asset.
@@ -322,6 +325,14 @@ AI nen la tinh nang ho tro, khong phai phan bat buoc cua MVP dau tien.
 - Moi hanh dong AI phai co preview truoc khi apply.
 - Nguoi dung co the undo moi thay doi do AI tao ra.
 - Neu lenh mo ho, he thong phai hoi lai thay vi tu sua sai.
+- Muc do AI duoc sua do nguoi dung tuy chon theo tung lan dung, vi du: sua nhe, sua vua, sang tao manh, hoac chi lam dung lenh.
+- Ngon ngu uu tien khi AI viet/sua text: tieng Nga -> tieng Anh -> tieng Viet -> ngon ngu khac theo noi dung khach cung cap.
+- AI chi duoc xoa layer khi nguoi dung ra lenh ro rang la xoa layer. Neu khong co lenh xoa, AI khong duoc tu xoa layer.
+- AI chi duoc them layer khi nguoi dung ra lenh ro rang la tao/them layer. Neu chi yeu cau sua nho, AI phai uu tien sua layer hien co.
+- AI khong duoc tra code JavaScript/HTML/CSS de frontend chay.
+- AI khong duoc sua layer khong ton tai.
+- AI khong duoc tao layer vuot ngoai kich thuoc card.
+- AI khong duoc sua qua nhieu layer neu nguoi dung chi yeu cau sua nho.
 
 ### 6.2. JSON patch/action
 
@@ -368,12 +379,9 @@ Khong nen gui toan bo lich su edit dai hoac canvas JSON qua lon neu khong can.
 
 Phase dau:
 
-- Doi tone mau theo nganh nghe.
-- Viet lai slogan ngan gon.
-- Goi y bo cuc.
-- Can chinh layer theo nhom.
-- Tao QR label.
-- Goi y noi dung card visit.
+- AI sua text.
+- AI goi y mau/palette.
+- AI tra ve JSON patch de preview truoc khi apply.
 
 Phase sau:
 
@@ -868,6 +876,10 @@ Vizi se dung Gemini API lam AI provider chinh trong giai doan dau de toi uu chi 
 - Frontend Vue khong duoc goi truc tiep Gemini API.
 - Backend phai validate tat ca output AI truoc khi apply vao canvas.
 - AI khong duoc ghi de truc tiep thiet ke cua nguoi dung neu chua co preview va xac nhan.
+- Muc do sua cua AI do nguoi dung chon tren UI, khong hardcode mot che do duy nhat.
+- Ngon ngu uu tien cho prompt/text: tieng Nga -> tieng Anh -> tieng Viet -> ngon ngu khac.
+- AI chi them layer khi prompt co y ro rang nhu "them", "tao them", "add". AI chi xoa layer khi prompt co y ro rang nhu "xoa", "remove", "delete".
+- Khi khong co lenh them/xoa, AI chi duoc sua layer hien co trong pham vi nho va phai preview/undo duoc.
 - Khong luu de len anh goc khi xoa phong. Luon luu ca anh goc va anh da xu ly.
 - Dung paid tier cho production neu co anh/du lieu khach hang that, vi free tier co the dung du lieu de cai thien san pham theo chinh sach nha cung cap.
 
@@ -877,7 +889,7 @@ Vizi se dung Gemini API lam AI provider chinh trong giai doan dau de toi uu chi 
 Vue Frontend
   -> gui prompt, layer hien tai, canvas summary, file upload neu co
 Spring Boot Backend
-  -> kiem tra dang nhap va quota
+  -> kiem tra dang nhap
   -> goi Gemini API
   -> validate JSON/action/image output
   -> luu vao PostgreSQL va Storage
@@ -946,17 +958,24 @@ Day la co che chinh de AI sua thiet ke. AI chi duoc tra ve action hop le:
 
 ```json
 {
+  "schemaVersion": 1,
+  "editStrength": "light",
+  "targetSide": "front",
+  "summary": "Sua mau va text theo phong cach luxury.",
   "actions": [
     {
-      "type": "set_fill",
+      "op": "update_fill",
       "layerId": "brandName",
-      "value": "#1F2937"
+      "fill": "#1F2937"
     },
     {
-      "type": "move",
+      "op": "update_geometry",
       "layerId": "qrCode",
-      "x": 420,
-      "y": 220
+      "x": 72,
+      "y": 68,
+      "width": 18,
+      "height": 18,
+      "rotation": 0
     }
   ]
 }
@@ -965,15 +984,24 @@ Day la co che chinh de AI sua thiet ke. AI chi duoc tra ve action hop le:
 Danh sach action nen ho tro ban dau:
 
 - `update_text`
-- `set_fill`
-- `set_font_size`
-- `move`
-- `resize`
-- `align`
-- `toggle_visibility`
-- `replace_image`
+- `update_fill`
+- `update_stroke`
+- `update_font`
+- `update_geometry`
+- `update_effects`
+- `add_layer` chi khi nguoi dung ra lenh tao/them layer
+- `remove_layer` chi khi nguoi dung ra lenh xoa layer
 
-Khong cho AI tra ve code JavaScript de frontend chay truc tiep.
+Backend can validate:
+
+- `schemaVersion` dung version backend ho tro.
+- `editStrength` nam trong whitelist: `light`, `balanced`, `creative`, `direct_command`.
+- `targetSide` chi la `front` hoac `back`.
+- `layerId` phai ton tai, tru `add_layer`.
+- Layer moi khong duoc vuot ngoai card va khong duoc tao HTML/code.
+- Neu prompt khong co lenh them/xoa ro rang, reject `add_layer` va `remove_layer`.
+- Moi action phai preview duoc va undo duoc truoc khi apply.
+- Khong cho AI tra ve code JavaScript/HTML/CSS de frontend chay truc tiep.
 
 #### AI tim asset
 
@@ -1085,14 +1113,15 @@ Tat ca endpoint AI phai:
 
 - Yeu cau dang nhap.
 - Kiem tra owner cua `designId`, `assetId`.
-- Co rate limit theo user/IP.
-- Co daily quota theo user.
 - Ghi log chi phi uoc tinh, model, token input/output.
 - Khong log raw prompt/anh neu co du lieu nhay cam, hoac phai redact/anonymize.
+- Giai doan beta chua gioi han so luot dung, nhung code nen tach san diem gan quota/rate limit de bat lai nhanh khi co user that.
 
 #### Quota va kiem soat chi phi
 
-Goi y quota cho user mien phi:
+Giai doan beta hien tai chua gioi han so luot dung de test nhanh. Tuy nhien van can log usage de biet tinh nang nao ton token/chi phi nhieu.
+
+Goi y quota khi dua len production hoac co user that:
 
 ```text
 AI sua text: 30 lan/ngay
@@ -1132,9 +1161,10 @@ Voi `gemini-3.1-flash-lite`, chi phi text/JSON thuong rat thap neu prompt ngan v
 Phuong an mac dinh cho Vizi:
 
 ```text
-Bat ngay: sua text, goi y mau, JSON patch, tim asset.
-Bat co gioi han: xoa phong.
-Tam tat: tao anh hang loat, tao card thanh anh phang.
+Bat giai doan dau: AI sua text, AI goi y mau, JSON patch preview.
+Lam sau khi editor/palette/patch on dinh: tim asset.
+De cuoi hoac gan cuoi: xoa phong, tao/sua anh.
+Khong lam: tao card thanh anh phang khong editable.
 ```
 
 ## 13. Lo trinh phat trien
