@@ -24,6 +24,7 @@ const designId = computed(() => {
   const value = route.params.designId ?? route.params.id;
   return Number(Array.isArray(value) ? value[0] : value);
 });
+const isEditorRoute = computed(() => route.name === "editor");
 const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value);
 const canvasLayerCount = computed(() => canvasLayers.value.length);
 const firstTextLayerIndex = computed(() =>
@@ -141,7 +142,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="detail-view">
+  <section :class="isEditorRoute ? 'editor-view' : 'detail-view'">
     <RouterLink class="back-link" to="/designs">Back to drafts</RouterLink>
 
     <p v-if="loading" class="muted">Loading draft...</p>
@@ -149,6 +150,88 @@ onMounted(async () => {
       {{ error }}
       <RouterLink v-if="error.includes('Sign in')" to="/account">Open account</RouterLink>
     </p>
+
+    <template v-else-if="design && isEditorRoute">
+      <header class="editor-header">
+        <div>
+          <p class="eyebrow">Draft #{{ design.id }}</p>
+          <h1>{{ design.name }}</h1>
+        </div>
+        <div class="editor-header-actions">
+          <span v-if="saveMessage" class="save-status" role="status">{{ saveMessage }}</span>
+          <span v-else-if="!saveError" class="muted">Saved draft</span>
+          <button class="primary-action" type="button" :disabled="saving" @click="saveDraft">
+            {{ saving ? "Saving..." : "Save draft" }}
+          </button>
+        </div>
+      </header>
+
+      <div class="editor-shell">
+        <aside class="editor-sidebar editor-sidebar--left" aria-label="Editor sidebar">
+          <section class="editor-section">
+            <h2>Layers</h2>
+            <ol class="editor-layer-list">
+              <li v-for="(layer, index) in canvasLayers" :key="index">
+                <span>{{ index + 1 }}</span>
+                <strong>{{ layer.type || "Layer" }}</strong>
+              </li>
+            </ol>
+            <p v-if="canvasLayers.length === 0" class="muted">No layers</p>
+          </section>
+          <section class="editor-section">
+            <h2>Assets</h2>
+            <p class="muted">No uploaded assets</p>
+          </section>
+        </aside>
+
+        <section class="editor-workspace" aria-label="Card canvas workspace">
+          <CanvasPreview
+            :layers="canvasLayers"
+            :width-mm="design.widthMm"
+            :height-mm="design.heightMm"
+            label="Draft canvas preview"
+            empty-label="Draft"
+          />
+        </section>
+
+        <aside class="editor-sidebar editor-sidebar--right" aria-label="Properties panel">
+          <section class="editor-section">
+            <h2>Properties</h2>
+            <dl class="editor-properties">
+              <div>
+                <dt>Size</dt>
+                <dd>{{ design.widthMm }} x {{ design.heightMm }} mm</dd>
+              </div>
+              <div>
+                <dt>Layers</dt>
+                <dd>{{ canvasLayerCount }}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
+            <label for="editor-text-layer">Text layer</label>
+            <textarea
+              id="editor-text-layer"
+              v-model="firstTextLayerText"
+              maxlength="120"
+              rows="5"
+            />
+          </div>
+          <p v-else class="muted">No text layer.</p>
+
+          <p v-if="saveError" class="error-text" role="alert">{{ saveError }}</p>
+          <button
+            class="danger-action"
+            type="button"
+            :disabled="saving || deleting"
+            @click="deleteDraft"
+          >
+            {{ deleting ? "Deleting..." : confirmingDelete ? "Confirm delete" : "Delete draft" }}
+          </button>
+        </aside>
+      </div>
+    </template>
 
     <article v-else-if="design" class="detail-shell">
       <div class="detail-preview">
