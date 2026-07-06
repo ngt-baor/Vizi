@@ -56,6 +56,10 @@ const redoLayerStack = ref<CanvasLayer[][]>([]);
 const editorZoom = ref(100);
 const editorPanX = ref(0);
 const editorPanY = ref(0);
+const assetPreviewUrl = ref("");
+const assetPreviewName = ref("");
+const assetPreviewSize = ref("");
+const assetPreviewError = ref("");
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
@@ -73,6 +77,8 @@ const colorTargets: { id: ColorTarget; label: string }[] = [
   { id: "stroke", label: "Stroke" },
 ];
 const recentColors = ["#B1B2B5", "#2F281C", "#A87F33", "#5F7344", "#A5382F", "#FFFFFF"];
+const allowedPreviewImageTypes = ["image/png", "image/jpeg", "image/webp"];
+const maximumPreviewImageBytes = 5 * 1024 * 1024;
 const systemFontFamilyOptions = [
   "inherit",
   "Arial",
@@ -316,6 +322,51 @@ function resetEditorView(): void {
   editorZoom.value = 100;
   editorPanX.value = 0;
   editorPanY.value = 0;
+}
+
+function revokeAssetPreview(): void {
+  if (assetPreviewUrl.value) {
+    URL.revokeObjectURL(assetPreviewUrl.value);
+  }
+  assetPreviewUrl.value = "";
+  assetPreviewName.value = "";
+  assetPreviewSize.value = "";
+}
+
+function formatBytes(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${Math.round((bytes / 1024 / 1024) * 10) / 10} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function previewAssetImage(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  assetPreviewError.value = "";
+  revokeAssetPreview();
+  if (!file) {
+    return;
+  }
+
+  if (!allowedPreviewImageTypes.includes(file.type)) {
+    assetPreviewError.value = "Only PNG, JPG, or WebP images can be previewed.";
+    input.value = "";
+    return;
+  }
+  if (file.size > maximumPreviewImageBytes) {
+    assetPreviewError.value = "Image must be 5 MB or smaller.";
+    input.value = "";
+    return;
+  }
+
+  assetPreviewUrl.value = URL.createObjectURL(file);
+  assetPreviewName.value = file.name;
+  assetPreviewSize.value = formatBytes(file.size);
+}
+
+function clearAssetPreview(): void {
+  revokeAssetPreview();
+  assetPreviewError.value = "";
 }
 
 function startCanvasPan(event: PointerEvent): void {
@@ -906,6 +957,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("keydown", handleEditorShortcut);
+  revokeAssetPreview();
 });
 </script>
 
@@ -1070,7 +1122,27 @@ onUnmounted(() => {
           </section>
           <section class="editor-section">
             <h2>Assets</h2>
-            <p class="muted">No uploaded assets</p>
+            <label class="editor-upload-control">
+              <span>Image preview</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                aria-label="Preview image asset"
+                @change="previewAssetImage"
+              >
+            </label>
+            <p v-if="assetPreviewError" class="error-text editor-upload-error" role="alert">
+              {{ assetPreviewError }}
+            </p>
+            <figure v-if="assetPreviewUrl" class="editor-asset-preview">
+              <img :src="assetPreviewUrl" :alt="assetPreviewName">
+              <figcaption>
+                <strong>{{ assetPreviewName }}</strong>
+                <span>{{ assetPreviewSize }}</span>
+              </figcaption>
+              <button type="button" @click="clearAssetPreview">Clear</button>
+            </figure>
+            <p v-else-if="!assetPreviewError" class="muted">No uploaded assets</p>
           </section>
         </aside>
 
