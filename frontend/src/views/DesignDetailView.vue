@@ -9,6 +9,7 @@ type CanvasLayer = Record<string, unknown> & {
   type?: string;
 };
 type EditorPage = "front" | "back";
+type EditorTool = "select" | "text" | "shape" | "image" | "qr" | "icon";
 
 const route = useRoute();
 const router = useRouter();
@@ -22,17 +23,18 @@ const confirmingDelete = ref(false);
 const saveMessage = ref("");
 const saveError = ref("");
 const selectedPage = ref<EditorPage>("front");
+const activeTool = ref<EditorTool>("select");
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
 ];
-const editorTools = [
-  { label: "Select", icon: MousePointer2 },
-  { label: "Text", icon: Type },
-  { label: "Shape", icon: Shapes },
-  { label: "Image", icon: ImageIcon },
-  { label: "QR", icon: QrCode },
-  { label: "Icon", icon: Sticker },
+const editorTools: { id: EditorTool; label: string; icon: typeof MousePointer2 }[] = [
+  { id: "select", label: "Select", icon: MousePointer2 },
+  { id: "text", label: "Text", icon: Type },
+  { id: "shape", label: "Shape", icon: Shapes },
+  { id: "image", label: "Image", icon: ImageIcon },
+  { id: "qr", label: "QR", icon: QrCode },
+  { id: "icon", label: "Icon", icon: Sticker },
 ];
 
 const designId = computed(() => {
@@ -43,6 +45,9 @@ const isEditorRoute = computed(() => route.name === "editor");
 const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value);
 const selectedPageLabel = computed(() =>
   editorPages.find((page) => page.id === selectedPage.value)?.label ?? "Front",
+);
+const activeToolLabel = computed(() =>
+  editorTools.find((tool) => tool.id === activeTool.value)?.label ?? "Select",
 );
 const editorCanvasLayers = computed<CanvasLayer[]>(() =>
   selectedPage.value === "front" ? canvasLayers.value : [],
@@ -100,6 +105,11 @@ function serializeCanvas(): string {
     // Invalid saved JSON falls back to the validated canvas shape below.
   }
   return JSON.stringify({ layers: editableLayers.value });
+}
+
+function selectTool(tool: EditorTool): void {
+  activeTool.value = tool;
+  saveMessage.value = "";
 }
 
 async function saveDraft(): Promise<void> {
@@ -227,9 +237,13 @@ onMounted(async () => {
           <div class="editor-toolbar" role="toolbar" aria-label="Canvas tools">
             <button
               v-for="tool in editorTools"
-              :key="tool.label"
+              :key="tool.id"
               type="button"
+              :class="{ active: activeTool === tool.id }"
+              :aria-pressed="activeTool === tool.id"
+              :aria-label="`${tool.label} tool`"
               :title="tool.label"
+              @click="selectTool(tool.id)"
             >
               <component :is="tool.icon" :size="18" :stroke-width="1.8" aria-hidden="true" />
               <span>{{ tool.label }}</span>
@@ -255,6 +269,10 @@ onMounted(async () => {
               <div>
                 <dt>Side</dt>
                 <dd>{{ selectedPageLabel }}</dd>
+              </div>
+              <div>
+                <dt>Tool</dt>
+                <dd>{{ activeToolLabel }}</dd>
               </div>
               <div>
                 <dt>Layers</dt>

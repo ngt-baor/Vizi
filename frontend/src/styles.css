@@ -442,6 +442,12 @@ h2 {
   color: #2f281c;
 }
 
+.editor-toolbar button.active {
+  background: #2f281c;
+  color: #fffaf0;
+  box-shadow: 0 8px 18px rgba(47, 40, 28, 0.18);
+}
+
 .editor-toolbar button:focus-visible {
   outline: 3px solid rgba(168, 127, 51, 0.25);
   outline-offset: -2px;
