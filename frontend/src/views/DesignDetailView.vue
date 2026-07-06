@@ -96,6 +96,16 @@ const resizableLayerIndex = computed<number | null>(() => {
     ? selectedLayerIndex.value
     : null;
 });
+const rotatableLayerIndex = computed<number | null>(() => {
+  const layer = selectedLayer.value;
+  return selectedPage.value === "front"
+    && selectedLayerIndexes.value.length === 1
+    && layer
+    && layerIsVisible(layer)
+    && !layerIsLocked(layer)
+    ? selectedLayerIndex.value
+    : null;
+});
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
     return `${selectedLayerIndexes.value.length} layers selected`;
@@ -318,8 +328,49 @@ function startLayerResize(index: number, event: PointerEvent): void {
   window.addEventListener("pointercancel", stop);
 }
 
+function startLayerRotate(index: number, event: PointerEvent): void {
+  const layer = editableLayers.value[index];
+  const layerElement = (event.currentTarget as HTMLElement).closest<HTMLElement>(".canvas-layer");
+  if (!layer || !layerElement || layerIsLocked(layer) || selectedLayerIndexes.value.length !== 1) {
+    return;
+  }
+
+  event.preventDefault();
+  const layerRect = layerElement.getBoundingClientRect();
+  const centerX = layerRect.left + layerRect.width / 2;
+  const centerY = layerRect.top + layerRect.height / 2;
+  const startAngle = angleFromCenter(event.clientX, event.clientY, centerX, centerY);
+  const startRotation = numberValue(layer.rotation, 0);
+
+  const move = (moveEvent: PointerEvent) => {
+    const currentAngle = angleFromCenter(moveEvent.clientX, moveEvent.clientY, centerX, centerY);
+    editableLayers.value[index] = {
+      ...editableLayers.value[index],
+      rotation: normalizeDegrees(startRotation + currentAngle - startAngle),
+    };
+    saveMessage.value = "";
+  };
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
 function numberValue(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function angleFromCenter(clientX: number, clientY: number, centerX: number, centerY: number): number {
+  return Math.atan2(clientY - centerY, clientX - centerX) * 180 / Math.PI;
+}
+
+function normalizeDegrees(value: number): number {
+  const rounded = Math.round(value * 100) / 100;
+  return ((rounded % 360) + 360) % 360;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -597,10 +648,12 @@ onMounted(async () => {
             :selected-layer-index="selectedLayerIndex"
             :selected-layer-indexes="selectedLayerIndexes"
             :resizable-layer-index="resizableLayerIndex"
+            :rotatable-layer-index="rotatableLayerIndex"
             interactive
             @canvas-pointerdown="clearLayerSelection"
             @layer-pointerdown="startLayerDrag"
             @layer-resize-pointerdown="startLayerResize"
+            @layer-rotate-pointerdown="startLayerRotate"
             @layer-select="selectLayer"
           />
           <div class="editor-color-bar" aria-label="Quick colors">

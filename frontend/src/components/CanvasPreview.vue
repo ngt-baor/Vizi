@@ -14,6 +14,7 @@ const props = defineProps<{
   selectedLayerIndex?: number | null;
   selectedLayerIndexes?: number[];
   resizableLayerIndex?: number | null;
+  rotatableLayerIndex?: number | null;
   interactive?: boolean;
 }>();
 
@@ -21,6 +22,7 @@ const emit = defineEmits<{
   canvasPointerdown: [event: PointerEvent];
   layerPointerdown: [index: number, event: PointerEvent];
   layerResizePointerdown: [index: number, event: PointerEvent];
+  layerRotatePointerdown: [index: number, event: PointerEvent];
   layerSelect: [index: number, event: KeyboardEvent];
 }>();
 
@@ -98,6 +100,8 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
       : `${fontSize}px`,
     fontWeight: numberValue(layer.fontWeight, 700),
     opacity: numberValue(layer.opacity, 1),
+    transform: `rotate(${numberValue(layer.rotation, 0)}deg)`,
+    transformOrigin: "center center",
   };
 }
 </script>
@@ -131,6 +135,14 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
         <template v-else>
           {{ layerText(layer) }}
         </template>
+        <button
+          v-if="interactive && index === rotatableLayerIndex"
+          type="button"
+          class="canvas-rotate-handle"
+          :aria-label="`Rotate layer ${index + 1}`"
+          title="Rotate layer"
+          @pointerdown.stop.prevent="emit('layerRotatePointerdown', index, $event)"
+        />
         <button
           v-if="interactive && index === resizableLayerIndex"
           type="button"

@@ -730,6 +730,42 @@ h2 {
   outline-offset: 3px;
 }
 
+.canvas-rotate-handle {
+  position: absolute;
+  z-index: 3;
+  top: -36px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fffdf8;
+  border-radius: 999px;
+  background: #2f281c;
+  box-shadow: 0 0 0 1px rgba(47, 40, 28, 0.38);
+  cursor: grab;
+  touch-action: none;
+  transform: translateX(-50%);
+}
+
+.canvas-rotate-handle::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 2px;
+  height: 15px;
+  background: rgba(168, 127, 51, 0.68);
+  transform: translateX(-50%);
+}
+
+.canvas-rotate-handle:active {
+  cursor: grabbing;
+}
+
+.canvas-rotate-handle:focus-visible {
+  outline: 3px solid rgba(168, 127, 51, 0.38);
+  outline-offset: 3px;
+}
+
 .canvas-layer--rect,
 .canvas-layer--shape {
   border: 1px solid rgba(122, 93, 46, 0.18);
