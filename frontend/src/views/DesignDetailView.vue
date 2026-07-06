@@ -22,6 +22,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "@lucide/vue";
+import * as QRCode from "qrcode";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
@@ -69,6 +70,10 @@ const assetPreviewSize = ref("");
 const assetPreviewError = ref("");
 const assetPreviewFile = ref<File | null>(null);
 const assetUploading = ref(false);
+const qrText = ref("https://vizi.local/card");
+const qrPreviewUrl = ref("");
+const qrPreviewError = ref("");
+const qrGenerating = ref(false);
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
@@ -411,6 +416,37 @@ async function addPreviewAssetToCanvas(): Promise<void> {
     assetPreviewError.value = unknownError instanceof Error ? unknownError.message : "Cannot upload image";
   } finally {
     assetUploading.value = false;
+  }
+}
+
+async function generateQrPreview(): Promise<void> {
+  const value = qrText.value.trim();
+  qrPreviewError.value = "";
+  qrPreviewUrl.value = "";
+  if (!value) {
+    qrPreviewError.value = "QR text is required.";
+    return;
+  }
+  if (value.length > 500) {
+    qrPreviewError.value = "QR text must be 500 characters or fewer.";
+    return;
+  }
+
+  qrGenerating.value = true;
+  try {
+    qrPreviewUrl.value = await QRCode.toDataURL(value, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 256,
+      color: {
+        dark: "#1f1a12",
+        light: "#ffffff",
+      },
+    });
+  } catch {
+    qrPreviewError.value = "Cannot generate QR code.";
+  } finally {
+    qrGenerating.value = false;
   }
 }
 
@@ -1195,6 +1231,30 @@ onUnmounted(() => {
               <button type="button" @click="clearAssetPreview">Clear</button>
             </figure>
             <p v-else-if="!assetPreviewError" class="muted">No uploaded assets</p>
+            <div class="editor-qr-generator" aria-label="QR generator">
+              <label>
+                <span>QR text</span>
+                <textarea
+                  v-model="qrText"
+                  maxlength="500"
+                  rows="3"
+                  aria-label="QR text"
+                />
+              </label>
+              <button type="button" :disabled="qrGenerating" @click="generateQrPreview">
+                {{ qrGenerating ? "Generating..." : "Generate QR" }}
+              </button>
+              <p v-if="qrPreviewError" class="error-text editor-upload-error" role="alert">
+                {{ qrPreviewError }}
+              </p>
+              <figure v-if="qrPreviewUrl" class="editor-asset-preview editor-qr-preview">
+                <img :src="qrPreviewUrl" :alt="`QR code for ${qrText}`">
+                <figcaption>
+                  <strong>QR code</strong>
+                  <span>{{ qrText }}</span>
+                </figcaption>
+              </figure>
+            </div>
           </section>
         </aside>
 
