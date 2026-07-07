@@ -35,6 +35,10 @@ code {
   padding: 28px;
 }
 
+.app-shell--editor {
+  padding: 0;
+}
+
 .topbar {
   width: min(1080px, 100%);
   margin: 0 auto 32px;
@@ -248,12 +252,27 @@ h2 {
   gap: 16px;
 }
 
+.app-shell--editor .editor-view {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  gap: 0;
+  margin: 0;
+}
+
 .back-link {
   width: max-content;
   color: #6e5628;
   font-size: 14px;
   font-weight: 700;
   text-decoration: none;
+}
+
+.app-shell--editor .editor-view > .back-link {
+  position: absolute;
+  z-index: 5;
+  top: 20px;
+  left: 18px;
 }
 
 .back-link:hover {
@@ -281,9 +300,27 @@ h2 {
   padding: 4px 2px 16px;
 }
 
+.app-shell--editor .editor-header {
+  min-height: 72px;
+  padding: 8px 18px 8px 148px;
+  background: rgba(255, 253, 248, 0.92);
+}
+
 .editor-header h1 {
   margin: 0;
   font-size: clamp(28px, 4vw, 44px);
+}
+
+.app-shell--editor .editor-header h1 {
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.app-shell--editor .editor-header .eyebrow {
+  margin-bottom: 3px;
+  font-size: 10px;
 }
 
 .editor-header-actions {
@@ -301,6 +338,12 @@ h2 {
   background: rgba(255, 255, 255, 0.62);
 }
 
+.app-shell--editor .editor-shell {
+  height: calc(100vh - 72px);
+  min-height: 0;
+  border: 0;
+}
+
 .editor-sidebar {
   min-width: 0;
   display: grid;
@@ -308,6 +351,10 @@ h2 {
   gap: 24px;
   padding: 22px 18px;
   background: rgba(255, 255, 255, 0.82);
+}
+
+.app-shell--editor .editor-sidebar {
+  overflow-y: auto;
 }
 
 .editor-sidebar--left {
@@ -637,6 +684,7 @@ h2 {
 .editor-workspace {
   position: relative;
   min-width: 0;
+  min-height: 0;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -1530,6 +1578,20 @@ h2 {
 }
 
 @media (max-width: 900px) {
+  .app-shell--editor .editor-view {
+    min-height: 100vh;
+  }
+
+  .app-shell--editor .editor-header {
+    padding-left: 18px;
+    padding-top: 52px;
+  }
+
+  .app-shell--editor .editor-shell {
+    height: auto;
+    min-height: calc(100vh - 112px);
+  }
+
   .editor-shell {
     min-height: 0;
     grid-template-columns: 1fr;
