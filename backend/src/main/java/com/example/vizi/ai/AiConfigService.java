@@ -28,4 +28,13 @@ class AiConfigService {
         }
         return new AiConfigStatus(true, textModel, imageModel);
     }
+
+    String requireGeminiApiKey() {
+        requireConfigured();
+        return geminiApiKey;
+    }
+
+    String textModel() {
+        return textModel;
+    }
 }
