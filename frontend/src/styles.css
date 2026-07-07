@@ -912,6 +912,60 @@ h2 {
   white-space: nowrap;
 }
 
+.app-shell--editor .editor-toolbar,
+.app-shell--editor .editor-zoom-controls,
+.app-shell--editor .editor-color-bar {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #151615;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 18px 42px rgba(0, 0, 0, 0.34);
+}
+
+.app-shell--editor .editor-toolbar button,
+.app-shell--editor .editor-zoom-controls button,
+.app-shell--editor .editor-zoom-controls span,
+.app-shell--editor .editor-color-targets button,
+.app-shell--editor .editor-color-value {
+  color: #d8cdb8;
+}
+
+.app-shell--editor .editor-toolbar button:hover,
+.app-shell--editor .editor-zoom-controls button:hover,
+.app-shell--editor .editor-color-targets button:hover {
+  background: #27312f;
+  color: #f8f3e7;
+}
+
+.app-shell--editor .editor-toolbar button.active,
+.app-shell--editor .editor-color-targets button.active {
+  background: #f8f3e7;
+  color: #151615;
+  box-shadow: none;
+}
+
+.app-shell--editor .editor-color-targets {
+  background: #0b0c0c;
+}
+
+.app-shell--editor .editor-color-swatch {
+  border-color: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.app-shell--editor .editor-color-swatch.active {
+  box-shadow:
+    0 0 0 2px #151615,
+    0 0 0 5px rgba(92, 240, 232, 0.34);
+}
+
+.app-shell--editor .editor-toolbar button:focus-visible,
+.app-shell--editor .editor-zoom-controls button:focus-visible,
+.app-shell--editor .editor-color-swatch:focus-visible,
+.app-shell--editor .editor-color-targets button:focus-visible {
+  outline: 3px solid rgba(92, 240, 232, 0.28);
+}
+
 .editor-properties {
   display: grid;
   gap: 10px;
