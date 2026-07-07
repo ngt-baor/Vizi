@@ -271,12 +271,20 @@ h2 {
 .app-shell--editor .editor-view > .back-link {
   position: absolute;
   z-index: 5;
-  top: 20px;
+  top: 18px;
   left: 18px;
+  color: #d8cdb8;
+  font-size: 12px;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .back-link:hover {
   color: #2f281c;
+}
+
+.app-shell--editor .editor-view > .back-link:hover {
+  color: #f8f3e7;
 }
 
 .detail-shell {
@@ -301,9 +309,11 @@ h2 {
 }
 
 .app-shell--editor .editor-header {
-  min-height: 72px;
-  padding: 8px 18px 8px 148px;
-  background: rgba(255, 253, 248, 0.92);
+  min-height: 64px;
+  padding: 8px 18px 8px 140px;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  background: #151615;
+  color: #f8f3e7;
 }
 
 .editor-header h1 {
@@ -312,14 +322,20 @@ h2 {
 }
 
 .app-shell--editor .editor-header h1 {
+  max-width: min(44vw, 640px);
+  overflow: hidden;
+  color: #f8f3e7;
   font-family: inherit;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-shell--editor .editor-header .eyebrow {
   margin-bottom: 3px;
+  color: #d4af37;
   font-size: 10px;
 }
 
@@ -339,9 +355,26 @@ h2 {
 }
 
 .app-shell--editor .editor-shell {
-  height: calc(100vh - 72px);
+  height: calc(100vh - 64px);
   min-height: 0;
   border: 0;
+}
+
+.app-shell--editor .editor-header .muted,
+.app-shell--editor .editor-header .save-status {
+  color: #d8cdb8;
+  font-size: 12px;
+}
+
+.app-shell--editor .editor-header .secondary-action {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #202321;
+  color: #f8f3e7;
+}
+
+.app-shell--editor .editor-header .primary-action {
+  background: #f8f3e7;
+  color: #151615;
 }
 
 .editor-sidebar {
@@ -1779,8 +1812,7 @@ h2 {
   }
 
   .app-shell--editor .editor-header {
-    padding-left: 18px;
-    padding-top: 52px;
+    padding: 38px 18px 10px;
   }
 
   .app-shell--editor .editor-shell {
@@ -1880,6 +1912,34 @@ h2 {
   .editor-header-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .app-shell--editor .editor-header {
+    gap: 8px;
+  }
+
+  .app-shell--editor .editor-header h1 {
+    max-width: 100%;
+    font-size: 19px;
+  }
+
+  .app-shell--editor .editor-header-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .app-shell--editor .editor-header-actions .muted,
+  .app-shell--editor .editor-header-actions .save-status {
+    grid-column: 1 / -1;
+  }
+
+  .app-shell--editor .editor-header .primary-action,
+  .app-shell--editor .editor-header .secondary-action {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
   }
 
   .editor-shell {
