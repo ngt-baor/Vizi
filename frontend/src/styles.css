@@ -688,11 +688,12 @@ h2 {
   display: grid;
   place-items: center;
   overflow: hidden;
+  isolation: isolate;
   padding: 92px 40px 94px;
   background:
-    linear-gradient(rgba(122, 93, 46, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(122, 93, 46, 0.05) 1px, transparent 1px),
-    #f3f1eb;
+    linear-gradient(rgba(122, 93, 46, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122, 93, 46, 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, #f4f2ed 0%, #e8e8e4 100%);
   background-size: 24px 24px;
 }
 
@@ -804,7 +805,8 @@ h2 {
   min-height: 100%;
   display: grid;
   place-items: center;
-  padding: 92px 40px 94px;
+  padding: clamp(118px, 14vh, 150px) clamp(48px, 7vw, 96px);
+  overflow: hidden;
   cursor: grab;
   transform-origin: center;
   touch-action: none;
@@ -815,7 +817,12 @@ h2 {
 }
 
 .editor-workspace .canvas-frame {
-  width: min(92%, calc(var(--canvas-width-mm, 90) * 8px));
+  width: min(calc(100% - 96px), calc(var(--canvas-width-mm, 90) * 8px));
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 0 0 1px rgba(122, 93, 46, 0.1),
+    0 34px 86px rgba(47, 40, 28, 0.18);
 }
 
 .editor-color-bar {
@@ -1749,6 +1756,14 @@ h2 {
     min-height: 360px;
     padding-inline: 24px;
   }
+
+  .app-shell--editor .editor-canvas-viewport {
+    padding: 92px 24px 94px;
+  }
+
+  .app-shell--editor .editor-workspace .canvas-frame {
+    width: min(92%, calc(var(--canvas-width-mm, 90) * 8px));
+  }
 }
 
 @media (max-width: 640px) {
@@ -1820,6 +1835,14 @@ h2 {
   .editor-workspace {
     min-height: 340px;
     padding: 82px 16px 84px;
+  }
+
+  .app-shell--editor .editor-canvas-viewport {
+    padding: 96px 16px 84px;
+  }
+
+  .app-shell--editor .editor-workspace .canvas-frame {
+    width: min(88%, calc(var(--canvas-width-mm, 90) * 8px));
   }
 
   .editor-toolbar {
