@@ -1102,6 +1102,141 @@ h2 {
   outline-offset: 2px;
 }
 
+.app-shell--editor .editor-sidebar {
+  background: #151615;
+  color: #f8f3e7;
+  scrollbar-color: rgba(212, 175, 55, 0.52) rgba(255, 255, 255, 0.08);
+}
+
+.app-shell--editor .editor-sidebar--left {
+  border-right-color: rgba(255, 255, 255, 0.1);
+}
+
+.app-shell--editor .editor-sidebar--right {
+  border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+.app-shell--editor .editor-sidebar h2,
+.app-shell--editor .editor-upload-control,
+.app-shell--editor .editor-qr-generator label,
+.app-shell--editor .editor-geometry label,
+.app-shell--editor .editor-text-style label,
+.app-shell--editor .editor-appearance label,
+.app-shell--editor .editor-effects label,
+.app-shell--editor .editor-panel label {
+  color: #d8cdb8;
+}
+
+.app-shell--editor .editor-sidebar .muted {
+  color: #b7b0a3;
+}
+
+.app-shell--editor .editor-sidebar .error-text {
+  color: #ffb4a9;
+}
+
+.app-shell--editor .editor-upload-control input,
+.app-shell--editor .editor-qr-generator textarea,
+.app-shell--editor .editor-geometry input,
+.app-shell--editor .editor-text-style input,
+.app-shell--editor .editor-text-style select,
+.app-shell--editor .editor-appearance input,
+.app-shell--editor .editor-effects input,
+.app-shell--editor .editor-panel textarea {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: #202321;
+  color: #f8f3e7;
+  box-shadow: none;
+}
+
+.app-shell--editor .editor-upload-control input::file-selector-button {
+  border-right-color: rgba(255, 255, 255, 0.12);
+  background: #2b2f2d;
+  color: #f8f3e7;
+}
+
+.app-shell--editor .editor-upload-control input:focus-visible,
+.app-shell--editor .editor-qr-generator textarea:focus-visible,
+.app-shell--editor .editor-geometry input:focus-visible,
+.app-shell--editor .editor-text-style input:focus-visible,
+.app-shell--editor .editor-text-style select:focus-visible,
+.app-shell--editor .editor-appearance input:focus-visible,
+.app-shell--editor .editor-effects input:focus-visible,
+.app-shell--editor .editor-panel textarea:focus-visible {
+  border-color: rgba(92, 240, 232, 0.72);
+  outline: 3px solid rgba(92, 240, 232, 0.2);
+}
+
+.app-shell--editor .editor-asset-preview img {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #0e0f0f;
+}
+
+.app-shell--editor .editor-asset-preview figcaption {
+  color: #b7b0a3;
+}
+
+.app-shell--editor .editor-asset-preview strong,
+.app-shell--editor .editor-layer-list strong,
+.app-shell--editor .editor-properties dd {
+  color: #f8f3e7;
+}
+
+.app-shell--editor .editor-asset-preview button,
+.app-shell--editor .editor-qr-generator button,
+.app-shell--editor .editor-layer-tools button,
+.app-shell--editor .editor-layer-button,
+.app-shell--editor .editor-layer-toggle,
+.app-shell--editor .danger-action {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #202321;
+  color: #f8f3e7;
+  box-shadow: none;
+}
+
+.app-shell--editor .editor-asset-preview button:hover,
+.app-shell--editor .editor-qr-generator button:hover:not(:disabled),
+.app-shell--editor .editor-layer-tools button:hover:not(:disabled),
+.app-shell--editor .editor-layer-button:hover,
+.app-shell--editor .editor-layer-toggle:hover,
+.app-shell--editor .editor-layer-row.active .editor-layer-button,
+.app-shell--editor .editor-layer-row.active .editor-layer-toggle {
+  border-color: rgba(92, 240, 232, 0.5);
+  background: #27312f;
+  box-shadow: none;
+}
+
+.app-shell--editor .editor-page-switch {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #0b0c0c;
+}
+
+.app-shell--editor .editor-page-switch button {
+  color: #b7b0a3;
+}
+
+.app-shell--editor .editor-page-switch button.active {
+  background: #f8f3e7;
+  color: #151615;
+  box-shadow: none;
+}
+
+.app-shell--editor .editor-layer-list span,
+.app-shell--editor .editor-properties dt {
+  color: #d4af37;
+}
+
+.app-shell--editor .editor-layer-toggle[aria-pressed="true"] {
+  background: #2c8079;
+  color: #f8f3e7;
+  opacity: 1;
+}
+
+.app-shell--editor .editor-layer-toggle--lock[aria-pressed="true"] {
+  background: #d4af37;
+  color: #151615;
+}
+
 .detail-preview {
   display: grid;
   place-items: center;
