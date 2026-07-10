@@ -36,6 +36,20 @@ export type DesignDetail = {
 
 export type DesignListItem = Omit<DesignDetail, "canvasJson">;
 
+export type AiEditStrength = "light" | "balanced" | "creative" | "direct_command";
+
+export type AiTextRewriteResponse = {
+  schemaVersion: 1;
+  editStrength: AiEditStrength;
+  targetSide: "front" | "back";
+  summary: string;
+  actions: Array<{
+    op: "update_text";
+    layerId: string;
+    text: string;
+  }>;
+};
+
 export type ImageUploadResponse = {
   assetId: number;
   fileName: string;
@@ -275,6 +289,29 @@ export async function uploadImageAsset(file: File): Promise<ImageUploadResponse>
   }
 
   return response.json() as Promise<ImageUploadResponse>;
+}
+
+export async function rewriteDesignText(
+  designId: number,
+  layerId: string,
+  prompt: string,
+  editStrength: AiEditStrength,
+  targetSide: "front" | "back",
+): Promise<AiTextRewriteResponse> {
+  const response = await writeWithCsrf(
+    "/api/ai/text/rewrite",
+    "POST",
+    JSON.stringify({ designId, layerId, prompt, editStrength, targetSide }),
+    "application/json",
+  );
+  if (response.status === 401) {
+    throw new Error("Sign in to use AI rewrite");
+  }
+  if (!response.ok) {
+    throw await authError(response, `AI rewrite failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<AiTextRewriteResponse>;
 }
 
 export async function createOrder(

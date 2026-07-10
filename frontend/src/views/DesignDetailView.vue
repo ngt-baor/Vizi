@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  Check,
   Copy,
   Eye,
   EyeOff,
@@ -15,10 +16,12 @@ import {
   RotateCcw,
   RotateCw,
   Shapes,
+  Sparkles,
   Sticker,
   Trash2,
   Type,
   Unlock,
+  X,
   ZoomIn,
   ZoomOut,
 } from "@lucide/vue";
@@ -29,11 +32,15 @@ import {
   apiBaseUrl,
   deleteDesign,
   getDesign,
+  rewriteDesignText,
   updateDesign,
   uploadImageAsset,
+  type AiEditStrength,
+  type AiTextRewriteResponse,
   type DesignDetail,
 } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
+import { applyTextRewritePreview, canvasLayerId, readLayerText } from "../aiRewritePreview";
 import { localFonts } from "../generated/localFonts";
 
 type CanvasLayer = Record<string, unknown> & {
@@ -42,6 +49,13 @@ type CanvasLayer = Record<string, unknown> & {
 type EditorPage = "front" | "back";
 type EditorTool = "select" | "text" | "shape" | "image" | "qr" | "icon";
 type ColorTarget = "fill" | "stroke";
+type AiRewritePreviewState = {
+  response: AiTextRewriteResponse;
+  layerId: string;
+  originalText: string;
+  replacementText: string;
+};
+
 
 const route = useRoute();
 const router = useRouter();
@@ -76,6 +90,18 @@ const qrText = ref("https://vizi.local/card");
 const qrPreviewUrl = ref("");
 const qrPreviewError = ref("");
 const qrGenerating = ref(false);
+const aiRewritePrompt = ref("");
+const aiRewriteStrength = ref<AiEditStrength>("light");
+const aiRewriteLoading = ref(false);
+const aiRewriteError = ref("");
+const aiRewritePreview = ref<AiRewritePreviewState | null>(null);
+const aiRewriteStrengths: Array<{ id: AiEditStrength; label: string }> = [
+  { id: "light", label: "Light" },
+  { id: "balanced", label: "Balanced" },
+  { id: "creative", label: "Creative" },
+  { id: "direct_command", label: "Direct" },
+];
+
 const editorPages: { id: EditorPage; label: string }[] = [
   { id: "front", label: "Front" },
   { id: "back", label: "Back" },
@@ -168,6 +194,10 @@ const selectedLayerCanEditText = computed(() => {
   const layer = selectedLayer.value;
   return selectedLayerCanEditGeometry.value && layer?.type === "text";
 });
+const canRequestAiRewrite = computed(() =>
+  Boolean(design.value && selectedLayerCanEditText.value && aiRewritePrompt.value.trim()),
+);
+
 const selectedLayerCanEditAppearance = computed(() => selectedLayerCanEditGeometry.value);
 const canUndoLayerChange = computed(() => undoLayerStack.value.length > 0);
 const canRedoLayerChange = computed(() => redoLayerStack.value.length > 0);
@@ -1012,6 +1042,82 @@ function applyQuickColor(color: string): void {
   commitLayers(layers);
 }
 
+async function requestAiTextRewrite(): Promise<void> {
+  const currentDesign = design.value;
+  const layer = selectedLayer.value;
+  if (!currentDesign || !layer || !canRequestAiRewrite.value || aiRewriteLoading.value) {
+    return;
+  }
+
+  const layerId = canvasLayerId(layer, selectedLayerIndex.value);
+  const originalText = readLayerText(layer);
+  aiRewriteLoading.value = true;
+  aiRewriteError.value = "";
+  aiRewritePreview.value = null;
+
+  try {
+    const response = await rewriteDesignText(
+      currentDesign.id,
+      layerId,
+      aiRewritePrompt.value.trim(),
+      aiRewriteStrength.value,
+      selectedPage.value,
+    );
+    const action = response.actions.length === 1 ? response.actions[0] : null;
+    if (
+      response.schemaVersion !== 1
+      || !action
+      || action.op !== "update_text"
+      || action.layerId !== layerId
+      || typeof action.text !== "string"
+    ) {
+      throw new Error("AI rewrite returned an invalid preview");
+    }
+
+    aiRewritePreview.value = {
+      response,
+      layerId,
+      originalText,
+      replacementText: action.text,
+    };
+  } catch (unknownError) {
+    aiRewriteError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot create AI rewrite preview";
+  } finally {
+    aiRewriteLoading.value = false;
+  }
+}
+
+function applyAiTextRewrite(): void {
+  const preview = aiRewritePreview.value;
+  if (!preview) {
+    return;
+  }
+
+  try {
+    const result = applyTextRewritePreview(
+      editableLayers.value,
+      preview.layerId,
+      preview.originalText,
+      preview.replacementText,
+    );
+    commitLayers(result.layers, [result.selectedIndex]);
+    aiRewritePreview.value = null;
+    aiRewriteError.value = "";
+    aiRewritePrompt.value = "";
+  } catch (unknownError) {
+    aiRewriteError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot apply AI rewrite preview";
+  }
+}
+
+function rejectAiTextRewrite(): void {
+  aiRewritePreview.value = null;
+  aiRewriteError.value = "";
+}
+
 async function saveDraft(): Promise<void> {
   if (!design.value || saving.value) {
     return;
@@ -1721,6 +1827,71 @@ onUnmounted(() => {
             <p v-else class="muted">Select one layer to edit effects.</p>
           </section>
 
+          <section class="editor-ai-rewrite" aria-label="AI text rewrite">
+            <div class="editor-ai-heading">
+              <Sparkles :size="16" :stroke-width="1.8" aria-hidden="true" />
+              <h2>AI rewrite</h2>
+            </div>
+            <textarea
+              v-model="aiRewritePrompt"
+              rows="3"
+              maxlength="1000"
+              placeholder="Describe the text change"
+              :disabled="!selectedLayerCanEditText || aiRewriteLoading"
+              aria-label="AI rewrite instruction"
+            />
+            <div class="editor-ai-strengths" role="group" aria-label="AI edit strength">
+              <button
+                v-for="strength in aiRewriteStrengths"
+                :key="strength.id"
+                type="button"
+                :class="{ active: aiRewriteStrength === strength.id }"
+                :aria-pressed="aiRewriteStrength === strength.id"
+                :disabled="aiRewriteLoading"
+                @click="aiRewriteStrength = strength.id"
+              >
+                {{ strength.label }}
+              </button>
+            </div>
+            <button
+              class="editor-ai-preview-button"
+              type="button"
+              :disabled="!canRequestAiRewrite || aiRewriteLoading"
+              @click="requestAiTextRewrite"
+            >
+              <Sparkles :size="15" :stroke-width="1.8" aria-hidden="true" />
+              {{ aiRewriteLoading ? "Generating..." : "Preview rewrite" }}
+            </button>
+            <p v-if="aiRewriteError" class="error-text" role="alert">{{ aiRewriteError }}</p>
+
+            <div v-if="aiRewritePreview" class="editor-ai-preview" role="status">
+              <p class="editor-ai-summary">{{ aiRewritePreview.response.summary }}</p>
+              <div class="editor-ai-diff">
+                <div>
+                  <span>Current</span>
+                  <p>{{ aiRewritePreview.originalText }}</p>
+                </div>
+                <div>
+                  <span>Proposed</span>
+                  <p>{{ aiRewritePreview.replacementText }}</p>
+                </div>
+              </div>
+              <div class="editor-ai-actions">
+                <button type="button" @click="rejectAiTextRewrite">
+                  <X :size="15" :stroke-width="1.8" aria-hidden="true" />
+                  Reject
+                </button>
+                <button
+                  class="editor-ai-apply"
+                  type="button"
+                  @click="applyAiTextRewrite"
+                >
+                  <Check :size="15" :stroke-width="1.8" aria-hidden="true" />
+                  Apply
+                </button>
+              </div>
+            </div>
+          </section>
           <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
             <label for="editor-text-layer">Text layer</label>
             <textarea
