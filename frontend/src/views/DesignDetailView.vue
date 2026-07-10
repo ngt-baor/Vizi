@@ -599,13 +599,21 @@ async function handleCanvasPointerDown(event: PointerEvent): Promise<void> {
 
   if (activeTool.value === "qr") {
     const { x, y } = layerPlacementFromPointer(event, 18, 18);
+    const value = qrText.value.trim();
+    if (!value) {
+      qrPreviewError.value = "QR text is required.";
+      return;
+    }
     if (!qrPreviewUrl.value) {
       await generateQrPreview();
+    }
+    if (!qrPreviewUrl.value) {
+      return;
     }
     const layer: CanvasLayer = {
       type: "qr",
       name: "QR code",
-      text: qrText.value.trim() || "https://vizi.local/card",
+      text: value,
       src: qrPreviewUrl.value,
       x,
       y,
