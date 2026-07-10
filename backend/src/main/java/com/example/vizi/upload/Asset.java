@@ -60,4 +60,12 @@ class Asset {
     Long id() {
         return id;
     }
+
+    String fileName() {
+        return fileName;
+    }
+
+    String mimeType() {
+        return mimeType;
+    }
 }

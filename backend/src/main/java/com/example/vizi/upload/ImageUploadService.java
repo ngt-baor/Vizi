@@ -11,6 +11,7 @@ import java.util.UUID;
 import com.example.vizi.auth.AuthService;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 class ImageUploadService {
+
+    record StoredImage(FileSystemResource resource, String contentType) {
+    }
 
     private static final long MAX_IMAGE_BYTES = 5L * 1024 * 1024;
     private static final Map<String, String> EXTENSIONS_BY_CONTENT_TYPE = Map.of(
@@ -81,6 +85,18 @@ class ImageUploadService {
             deleteQuietly(target);
             throw exception;
         }
+    }
+
+
+    @Transactional(readOnly = true)
+    StoredImage loadOwnedImage(String fileName, String email) {
+        var asset = assetRepository.findByFileNameAndUser_EmailIgnoreCase(fileName, email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Image not found"));
+        var target = imageDirectory.resolve(asset.fileName()).normalize();
+        if (!target.startsWith(imageDirectory) || !Files.isRegularFile(target)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Image not found");
+        }
+        return new StoredImage(new FileSystemResource(target), asset.mimeType());
     }
 
     private static void deleteQuietly(Path target) {

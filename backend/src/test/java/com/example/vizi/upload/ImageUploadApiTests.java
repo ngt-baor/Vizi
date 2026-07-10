@@ -90,6 +90,10 @@ class ImageUploadApiTests {
                 insert into users(email, password_hash, full_name, role)
                 values ('owner@example.test', '$2a$10$placeholderHash', 'Owner', 'USER')
                 """);
+        jdbcTemplate.update("""
+                insert into users(email, password_hash, full_name, role)
+                values ('other@example.test', '$2a$10$placeholderHash', 'Other', 'USER')
+                """);
     }
 
     @AfterAll
@@ -136,6 +140,25 @@ class ImageUploadApiTests {
                 .containsEntry("mime_type", "image/png")
                 .containsEntry("size_bytes", (long) pngBytes().length)
                 .containsEntry("email", "owner@example.test");
+
+        mockMvc.perform(get(url).with(user("owner@example.test")))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+    }
+
+    @Test
+    void uploadedImageUrlIsOnlyReadableByOwner() throws Exception {
+        var response = mockMvc.perform(multipart("/api/uploads/images")
+                        .file(pngFile("logo.png"))
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String url = JsonPath.read(response.getResponse().getContentAsString(), "$.url");
+
+        mockMvc.perform(get(url).with(user("other@example.test")))
+                .andExpect(status().isNotFound());
 
         mockMvc.perform(get(url).with(user("owner@example.test")))
                 .andExpect(status().isOk())
