@@ -1622,7 +1622,8 @@ onUnmounted(() => {
               <button type="button" role="menuitem" @click="toggleLayerLock(layerContextMenu.index); closeLayerContextMenu()">
                 {{ layerIsLocked(editableLayers[layerContextMenu.index]) ? "Unlock" : "Lock" }}
               </button>
-            </div>`r`n            <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
+            </div>
+            <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
           </section>
           <section class="editor-section">
             <h2>Assets</h2>
