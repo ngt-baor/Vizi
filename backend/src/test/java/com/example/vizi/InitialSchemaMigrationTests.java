@@ -38,6 +38,24 @@ class InitialSchemaMigrationTests {
     }
 
     @Test
+    void aiUsageLogMigrationStoresNoPromptOrSecret() throws Exception {
+        var sql = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V2__ai_usage_logs.sql"
+        )).toLowerCase(Locale.ROOT);
+
+        assertThat(sql)
+                .contains("create table ai_usage_logs")
+                .contains("references users(id)")
+                .contains("latency_ms bigint not null")
+                .contains("create index idx_ai_usage_logs_user_id")
+                .contains("create index idx_ai_usage_logs_created_at")
+                .doesNotContain("prompt")
+                .doesNotContain("response_body")
+                .doesNotContain("api_key")
+                .doesNotContain("secret");
+    }
+
+    @Test
     void flywayMigratesEmptyPostgreSqlDatabaseAndSupportsMvpFlow() throws Exception {
         assumeTrue(PASSWORD != null && !PASSWORD.isBlank(), "local PostgreSQL password env is not available");
         assumeTrue(canConnectToLocalPostgres(), "local PostgreSQL project cluster is not running");
@@ -100,6 +118,7 @@ class InitialSchemaMigrationTests {
                 "designs",
                 "design_snapshots",
                 "assets",
+                "ai_usage_logs",
                 "orders",
                 "order_items",
                 "flyway_schema_history"
@@ -129,7 +148,7 @@ class InitialSchemaMigrationTests {
                        and (
                          column_name in ('canvas_json', 'design_snapshot_json', 'print_config_json')
                          or column_name in ('created_at', 'updated_at')
-                         or column_name in ('total_amount', 'unit_price', 'subtotal')
+                         or column_name in ('total_amount', 'unit_price', 'subtotal', 'latency_ms')
                        )
                      """)) {
             var rows = new java.util.HashMap<String, String>();
@@ -144,6 +163,7 @@ class InitialSchemaMigrationTests {
                     .containsEntry("order_items.print_config_json", "jsonb")
                     .containsEntry("orders.total_amount", "numeric")
                     .containsEntry("order_items.unit_price", "numeric")
+                    .containsEntry("ai_usage_logs.latency_ms", "bigint")
                     .containsEntry("users.created_at", "timestamp with time zone")
                     .containsEntry("designs.updated_at", "timestamp with time zone");
         }
@@ -156,6 +176,8 @@ class InitialSchemaMigrationTests {
                 "idx_design_snapshots_design_id",
                 "idx_design_snapshots_user_id",
                 "idx_assets_user_id",
+                "idx_ai_usage_logs_user_id",
+                "idx_ai_usage_logs_created_at",
                 "idx_orders_user_id",
                 "idx_order_items_order_id",
                 "idx_order_items_design_id",

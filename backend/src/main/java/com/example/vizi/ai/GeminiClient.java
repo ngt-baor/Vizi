@@ -21,6 +21,7 @@ import tools.jackson.databind.node.ArrayNode;
 class GeminiClient {
 
     private final AiConfigService aiConfigService;
+    private final AiUsageLogService aiUsageLogService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String baseUrl;
@@ -28,14 +29,22 @@ class GeminiClient {
     @Autowired
     GeminiClient(
             AiConfigService aiConfigService,
+            AiUsageLogService aiUsageLogService,
             ObjectMapper objectMapper,
             @Value("${app.ai.gemini.base-url:https://generativelanguage.googleapis.com/v1beta}") String baseUrl
     ) {
-        this(aiConfigService, objectMapper, HttpClient.newHttpClient(), baseUrl);
+        this(aiConfigService, aiUsageLogService, objectMapper, HttpClient.newHttpClient(), baseUrl);
     }
 
-    GeminiClient(AiConfigService aiConfigService, ObjectMapper objectMapper, HttpClient httpClient, String baseUrl) {
+    GeminiClient(
+            AiConfigService aiConfigService,
+            AiUsageLogService aiUsageLogService,
+            ObjectMapper objectMapper,
+            HttpClient httpClient,
+            String baseUrl
+    ) {
         this.aiConfigService = aiConfigService;
+        this.aiUsageLogService = aiUsageLogService;
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
@@ -46,25 +55,44 @@ class GeminiClient {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Prompt is required");
         }
 
-        var apiKey = aiConfigService.requireGeminiApiKey();
-        var request = HttpRequest.newBuilder(endpoint(aiConfigService.textModel(), apiKey))
-                .timeout(Duration.ofSeconds(20))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody(prompt), StandardCharsets.UTF_8))
-                .build();
-
+        var model = aiConfigService.textModel();
+        var started = System.nanoTime();
         try {
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request failed with status " + response.statusCode());
+            var apiKey = aiConfigService.requireGeminiApiKey();
+            var request = HttpRequest.newBuilder(endpoint(model, apiKey))
+                    .timeout(Duration.ofSeconds(20))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody(prompt), StandardCharsets.UTF_8))
+                    .build();
+
+            try {
+                var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request failed with status " + response.statusCode());
+                }
+                var text = extractText(response.body());
+                aiUsageLogService.record("text.generate", model, "SUCCESS", elapsedMillis(started), null);
+                return text;
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request was interrupted", exception);
+            } catch (IOException exception) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request failed", exception);
             }
-            return extractText(response.body());
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request was interrupted", exception);
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request failed", exception);
+        } catch (ResponseStatusException exception) {
+            aiUsageLogService.record(
+                    "text.generate",
+                    model,
+                    "FAILED",
+                    elapsedMillis(started),
+                    "HTTP_" + exception.getStatusCode().value()
+            );
+            throw exception;
         }
+    }
+
+    private static long elapsedMillis(long started) {
+        return Duration.ofNanos(System.nanoTime() - started).toMillis();
     }
 
     private URI endpoint(String model, String apiKey) {

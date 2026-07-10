@@ -2,6 +2,11 @@ package com.example.vizi.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.longThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -27,8 +32,10 @@ class GeminiClientTests {
 
         try {
             var service = new AiConfigService("test api key", "models/gemini-test", "image-model");
+            var usageLogs = mock(AiUsageLogService.class);
             var client = new GeminiClient(
                     service,
+                    usageLogs,
                     new ObjectMapper(),
                     HttpClient.newHttpClient(),
                     "http://127.0.0.1:" + server.getAddress().getPort()
@@ -41,6 +48,13 @@ class GeminiClientTests {
             assertThat(query.get()).isEqualTo("key=test+api+key");
             assertThat(requestBody.get()).contains("\"contents\"");
             assertThat(requestBody.get()).contains("\"text\":\"Reply with pong.\"");
+            verify(usageLogs).record(
+                    eq("text.generate"),
+                    eq("models/gemini-test"),
+                    eq("SUCCESS"),
+                    longThat(value -> value >= 0),
+                    isNull()
+            );
         } finally {
             server.stop(0);
         }
@@ -49,13 +63,21 @@ class GeminiClientTests {
     @Test
     void missingGeminiKeyStopsBeforeHttpCall() {
         var service = new AiConfigService("", "gemini-test", "image-model");
-        var client = new GeminiClient(service, new ObjectMapper(), HttpClient.newHttpClient(), "http://127.0.0.1:1");
+        var usageLogs = mock(AiUsageLogService.class);
+        var client = new GeminiClient(service, usageLogs, new ObjectMapper(), HttpClient.newHttpClient(), "http://127.0.0.1:1");
 
         assertThatThrownBy(() -> client.generateText("hello"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                     assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
                     assertThat(exception.getReason()).isEqualTo("GEMINI_API_KEY is not configured");
                 });
+        verify(usageLogs).record(
+                eq("text.generate"),
+                eq("gemini-test"),
+                eq("FAILED"),
+                longThat(value -> value >= 0),
+                eq("HTTP_503")
+        );
     }
 
     @Test
@@ -66,8 +88,10 @@ class GeminiClientTests {
 
         try {
             var service = new AiConfigService("test-api-key", "gemini-test", "image-model");
+            var usageLogs = mock(AiUsageLogService.class);
             var client = new GeminiClient(
                     service,
+                    usageLogs,
                     new ObjectMapper(),
                     HttpClient.newHttpClient(),
                     "http://127.0.0.1:" + server.getAddress().getPort()
@@ -78,6 +102,13 @@ class GeminiClientTests {
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
                         assertThat(exception.getReason()).isEqualTo("Gemini response has no text");
                     });
+            verify(usageLogs).record(
+                    eq("text.generate"),
+                    eq("gemini-test"),
+                    eq("FAILED"),
+                    longThat(value -> value >= 0),
+                    eq("HTTP_502")
+            );
         } finally {
             server.stop(0);
         }
