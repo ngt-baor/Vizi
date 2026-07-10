@@ -48,6 +48,12 @@ type CanvasLayer = Record<string, unknown> & {
 type EditorPage = "front" | "back";
 type EditorTool = "select" | "text" | "rect" | "ellipse" | "shape" | "image" | "icon";
 type ColorTarget = "fill" | "stroke";
+type IconAsset = {
+  id: string;
+  label: string;
+  glyph: string;
+  tags: string[];
+};
 type LayerPanelItem = {
   index: number;
   number: number;
@@ -61,6 +67,16 @@ type LayerContextMenuState = {
 const layerContextMenuWidth = 176;
 const layerContextMenuHeight = 260;
 const layerContextMenuMargin = 8;
+const iconAssets: IconAsset[] = [
+  { id: "diamond", label: "Diamond", glyph: "◆", tags: ["diamond", "gem", "luxury", "jewel"] },
+  { id: "sparkle", label: "Sparkle", glyph: "✦", tags: ["sparkle", "shine", "star", "luxury"] },
+  { id: "star", label: "Star", glyph: "★", tags: ["star", "rating", "premium"] },
+  { id: "heart", label: "Heart", glyph: "♥", tags: ["heart", "love", "beauty", "spa"] },
+  { id: "phone", label: "Phone", glyph: "☎", tags: ["phone", "call", "contact", "dien thoai"] },
+  { id: "mail", label: "Mail", glyph: "✉", tags: ["mail", "email", "contact"] },
+  { id: "check", label: "Check", glyph: "✓", tags: ["check", "verified", "done"] },
+  { id: "flower", label: "Flower", glyph: "✿", tags: ["flower", "spa", "beauty", "organic"] },
+];
 type AiRewritePreviewState = {
   response: AiTextRewriteResponse;
   layerId: string;
@@ -102,6 +118,8 @@ const assetPreviewFile = ref<File | null>(null);
 const assetPreviewPixelWidth = ref(0);
 const assetPreviewPixelHeight = ref(0);
 const assetUploading = ref(false);
+const iconSearchQuery = ref("");
+const selectedIconId = ref(iconAssets[0]?.id ?? "diamond");
 const aiRewritePrompt = ref("");
 const aiRewriteStrength = ref<AiEditStrength>("light");
 const aiRewriteLoading = ref(false);
@@ -161,6 +179,19 @@ const activeToolLabel = computed(() =>
 const activeColorTargetLabel = computed(() =>
   colorTargets.find((target) => target.id === activeColorTarget.value)?.label ?? "Fill",
 );
+const selectedIconAsset = computed(() =>
+  iconAssets.find((icon) => icon.id === selectedIconId.value) ?? iconAssets[0],
+);
+const filteredIconAssets = computed(() => {
+  const query = iconSearchQuery.value.trim().toLowerCase();
+  if (!query) {
+    return iconAssets;
+  }
+  return iconAssets.filter((icon) =>
+    icon.label.toLowerCase().includes(query)
+      || icon.tags.some((tag) => tag.toLowerCase().includes(query)),
+  );
+});
 const editorCanvasLayers = computed<CanvasLayer[]>(() =>
   selectedPage.value === "front" ? canvasLayers.value : [],
 );
@@ -588,10 +619,12 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
   if (tool === "icon") {
     const size = { width: 8, height: 8 };
     const position = layerPlacementFromPointer(event, size.width, size.height);
+    const icon = selectedIconAsset.value;
     return {
       type: "icon",
-      name: "Icon",
-      text: "◆",
+      name: icon.label,
+      text: icon.glyph,
+      iconId: icon.id,
       ...position,
       ...size,
       fill: "#2f281c",
@@ -1646,6 +1679,33 @@ onUnmounted(() => {
               <button type="button" @click="clearAssetPreview">Clear</button>
             </figure>
             <p v-else-if="!assetPreviewError" class="muted">No uploaded assets</p>
+            <div class="editor-icon-library" aria-label="Icon library">
+              <label>
+                <span>Icon search</span>
+                <input
+                  v-model="iconSearchQuery"
+                  type="search"
+                  placeholder="Search icons"
+                  aria-label="Search icons"
+                >
+              </label>
+              <div class="editor-icon-grid" aria-label="Icon results">
+                <button
+                  v-for="icon in filteredIconAssets"
+                  :key="icon.id"
+                  type="button"
+                  :class="{ active: selectedIconId === icon.id }"
+                  :aria-pressed="selectedIconId === icon.id"
+                  :aria-label="`Select ${icon.label} icon`"
+                  :title="icon.label"
+                  @click="selectedIconId = icon.id; activeTool = 'icon'"
+                >
+                  <span class="editor-icon-glyph" aria-hidden="true">{{ icon.glyph }}</span>
+                  <span>{{ icon.label }}</span>
+                </button>
+              </div>
+              <p v-if="filteredIconAssets.length === 0" class="muted">No icons found</p>
+            </div>
           </section>
         </aside>
 
