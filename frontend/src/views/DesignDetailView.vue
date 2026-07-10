@@ -5,6 +5,7 @@ import {
   ArrowRight,
   ArrowUp,
   Check,
+  Circle,
   Copy,
   Eye,
   EyeOff,
@@ -13,9 +14,9 @@ import {
   Move,
   MousePointer2,
   QrCode,
+  Square,
   RotateCcw,
   RotateCw,
-  Shapes,
   Sparkles,
   Sticker,
   Trash2,
@@ -47,7 +48,7 @@ type CanvasLayer = Record<string, unknown> & {
   type?: string;
 };
 type EditorPage = "front" | "back";
-type EditorTool = "select" | "text" | "shape" | "image" | "qr" | "icon";
+type EditorTool = "select" | "text" | "rect" | "ellipse" | "shape" | "image" | "qr" | "icon";
 type ColorTarget = "fill" | "stroke";
 type LayerPanelItem = {
   index: number;
@@ -125,7 +126,8 @@ const editorPages: { id: EditorPage; label: string }[] = [
 const editorTools: { id: EditorTool; label: string; icon: typeof MousePointer2 }[] = [
   { id: "select", label: "Select", icon: MousePointer2 },
   { id: "text", label: "Text", icon: Type },
-  { id: "shape", label: "Shape", icon: Shapes },
+  { id: "rect", label: "Rect", icon: Square },
+  { id: "ellipse", label: "Ellipse", icon: Circle },
   { id: "image", label: "Image", icon: ImageIcon },
   { id: "qr", label: "QR", icon: QrCode },
   { id: "icon", label: "Icon", icon: Sticker },
@@ -642,7 +644,7 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
       opacity: 1,
     };
   }
-  if (tool === "shape") {
+  if (tool === "rect" || tool === "shape") {
     const size = { width: 24, height: 16 };
     const position = layerPlacementFromPointer(event, size.width, size.height);
     return {
@@ -654,6 +656,21 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
       stroke: "#b1b2b5",
       strokeWidth: 1,
       radius: 4,
+      opacity: 1,
+    };
+  }
+  if (tool === "ellipse") {
+    const size = { width: 18, height: 18 };
+    const position = layerPlacementFromPointer(event, size.width, size.height);
+    return {
+      type: "ellipse",
+      name: "Ellipse",
+      ...position,
+      ...size,
+      fill: "#b1b2b5",
+      stroke: "#b1b2b5",
+      strokeWidth: 1,
+      radius: 999,
       opacity: 1,
     };
   }

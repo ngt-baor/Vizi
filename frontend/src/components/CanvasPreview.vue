@@ -70,7 +70,7 @@ function layerImageSource(layer: CanvasLayer): string {
 
 function layerClass(layer: CanvasLayer): string {
   const type = stringValue(layer.type, "unknown");
-  return ["text", "rect", "shape", "image", "qr"].includes(type)
+  return ["text", "rect", "ellipse", "shape", "image", "qr"].includes(type)
     ? `canvas-layer--${type}`
     : "canvas-layer--unknown";
 }
@@ -118,7 +118,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
       layer.type === "text" ? "transparent" : "rgba(255,255,255,0.72)",
     ),
     border: layer.type === "text" ? "0" : `${strokeWidth}px solid ${stroke}`,
-    borderRadius: `${numberValue(layer.radius, 10)}px`,
+    borderRadius: layer.type === "ellipse" ? "9999px" : `${numberValue(layer.radius, 10)}px`,
     fontFamily: stringValue(layer.fontFamily, "inherit"),
     fontSize: layer.type === "text"
       ? `min(${fontSize}px, ${(fontSize / 5.2).toFixed(4)}cqw)`

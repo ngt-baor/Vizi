@@ -1643,6 +1643,7 @@ h2 {
 }
 
 .canvas-layer--rect,
+.canvas-layer--ellipse,
 .canvas-layer--shape {
   border: 1px solid rgba(122, 93, 46, 0.18);
 }
