@@ -53,6 +53,8 @@ type IconAsset = {
   label: string;
   glyph: string;
   tags: string[];
+  description: string;
+  keywords: string[];
 };
 type LayerPanelItem = {
   index: number;
@@ -68,14 +70,70 @@ const layerContextMenuWidth = 176;
 const layerContextMenuHeight = 260;
 const layerContextMenuMargin = 8;
 const iconAssets: IconAsset[] = [
-  { id: "diamond", label: "Diamond", glyph: "◆", tags: ["diamond", "gem", "luxury", "jewel"] },
-  { id: "sparkle", label: "Sparkle", glyph: "✦", tags: ["sparkle", "shine", "star", "luxury"] },
-  { id: "star", label: "Star", glyph: "★", tags: ["star", "rating", "premium"] },
-  { id: "heart", label: "Heart", glyph: "♥", tags: ["heart", "love", "beauty", "spa"] },
-  { id: "phone", label: "Phone", glyph: "☎", tags: ["phone", "call", "contact", "dien thoai"] },
-  { id: "mail", label: "Mail", glyph: "✉", tags: ["mail", "email", "contact"] },
-  { id: "check", label: "Check", glyph: "✓", tags: ["check", "verified", "done"] },
-  { id: "flower", label: "Flower", glyph: "✿", tags: ["flower", "spa", "beauty", "organic"] },
+  {
+    id: "diamond",
+    label: "Diamond",
+    glyph: "\u25C6",
+    tags: ["diamond", "gem", "luxury", "jewel"],
+    description: "Premium diamond mark for jewelry, luxury, salon, and personal branding cards.",
+    keywords: ["kim cuong", "da quy", "sang trong", "trang suc", "\u0431\u0440\u0438\u043B\u043B\u0438\u0430\u043D\u0442", "\u043B\u044E\u043A\u0441"],
+  },
+  {
+    id: "sparkle",
+    label: "Sparkle",
+    glyph: "\u2726",
+    tags: ["sparkle", "shine", "star", "luxury"],
+    description: "Small shine accent for premium, beauty, fashion, and highlight details.",
+    keywords: ["lap lanh", "toa sang", "ngoi sao", "cao cap", "\u0431\u043B\u0435\u0441\u043A", "\u0437\u0432\u0435\u0437\u0434\u0430"],
+  },
+  {
+    id: "star",
+    label: "Star",
+    glyph: "\u2605",
+    tags: ["star", "rating", "premium"],
+    description: "Rating or premium badge icon for review, service, and achievement cards.",
+    keywords: ["danh gia", "hang sao", "uy tin", "premium", "\u0440\u0435\u0439\u0442\u0438\u043D\u0433", "\u0437\u0432\u0435\u0437\u0434\u0430"],
+  },
+  {
+    id: "heart",
+    label: "Heart",
+    glyph: "\u2665",
+    tags: ["heart", "love", "beauty", "spa"],
+    description: "Soft wellness and beauty icon for spa, clinic, handmade, and personal care cards.",
+    keywords: ["trai tim", "tinh yeu", "spa", "lam dep", "\u0441\u0435\u0440\u0434\u0446\u0435", "\u043B\u044E\u0431\u043E\u0432\u044C"],
+  },
+  {
+    id: "phone",
+    label: "Phone",
+    glyph: "\u260E",
+    tags: ["phone", "call", "contact", "dien thoai"],
+    description: "Contact phone mark for hotline, booking, support, and direct call details.",
+    keywords: ["so dien thoai", "goi dien", "lien he", "hotline", "\u0442\u0435\u043B\u0435\u0444\u043E\u043D", "\u0437\u0432\u043E\u043D\u043E\u043A"],
+  },
+  {
+    id: "mail",
+    label: "Mail",
+    glyph: "\u2709",
+    tags: ["mail", "email", "contact"],
+    description: "Email contact icon for business, support, sales, and portfolio cards.",
+    keywords: ["thu", "email", "lien he", "hop thu", "\u043F\u043E\u0447\u0442\u0430", "\u044D\u043B\u0435\u043A\u0442\u0440\u043E\u043D\u043D\u0430\u044F \u043F\u043E\u0447\u0442\u0430"],
+  },
+  {
+    id: "check",
+    label: "Check",
+    glyph: "\u2713",
+    tags: ["check", "verified", "done"],
+    description: "Verified check mark for certified service, completion, and trust badges.",
+    keywords: ["xac minh", "hoan tat", "uy tin", "dung", "\u0433\u0430\u043B\u043E\u0447\u043A\u0430", "\u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E"],
+  },
+  {
+    id: "flower",
+    label: "Flower",
+    glyph: "\u273F",
+    tags: ["flower", "spa", "beauty", "organic"],
+    description: "Floral organic accent for spa, florist, wellness, cosmetic, and handmade cards.",
+    keywords: ["hoa", "huu co", "my pham", "spa vang", "\u0446\u0432\u0435\u0442\u043E\u043A", "\u0441\u043F\u0430", "\u043A\u0440\u0430\u0441\u043E\u0442\u0430"],
+  },
 ];
 type AiRewritePreviewState = {
   response: AiTextRewriteResponse;
@@ -182,15 +240,25 @@ const activeColorTargetLabel = computed(() =>
 const selectedIconAsset = computed(() =>
   iconAssets.find((icon) => icon.id === selectedIconId.value) ?? iconAssets[0],
 );
+function normalizeIconSearchText(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function iconSearchHaystack(icon: IconAsset): string {
+  return normalizeIconSearchText([
+    icon.label,
+    icon.description,
+    ...icon.tags,
+    ...icon.keywords,
+  ].join(" "));
+}
+
 const filteredIconAssets = computed(() => {
-  const query = iconSearchQuery.value.trim().toLowerCase();
+  const query = normalizeIconSearchText(iconSearchQuery.value);
   if (!query) {
     return iconAssets;
   }
-  return iconAssets.filter((icon) =>
-    icon.label.toLowerCase().includes(query)
-      || icon.tags.some((tag) => tag.toLowerCase().includes(query)),
-  );
+  return iconAssets.filter((icon) => iconSearchHaystack(icon).includes(query));
 });
 const editorCanvasLayers = computed<CanvasLayer[]>(() =>
   selectedPage.value === "front" ? canvasLayers.value : [],
