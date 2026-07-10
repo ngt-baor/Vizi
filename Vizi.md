@@ -776,19 +776,27 @@ Production khong duoc hardcode cau hinh vao source code. Can dung environment va
 ```text
 PORT
 SPRING_PROFILES_ACTIVE=prod
-DATABASE_URL
-DATABASE_USERNAME
-DATABASE_PASSWORD
+SPRING_DATASOURCE_URL
+SPRING_DATASOURCE_USERNAME
+SPRING_DATASOURCE_PASSWORD
 APP_BASE_URL
+FRONTEND_BASE_URL
+APP_CORS_ALLOWED_ORIGINS
+APP_UPLOAD_IMAGE_DIR
 STORAGE_ENDPOINT
 STORAGE_BUCKET
 STORAGE_ACCESS_KEY
 STORAGE_SECRET_KEY
-AI_PROVIDER_API_KEY
+GEMINI_API_KEY
+GEMINI_BASE_URL
+GEMINI_TEXT_MODEL
+GEMINI_IMAGE_MODEL
+GEMINI_EMBEDDING_MODEL
 JWT_SECRET
 ```
 
 Local development co the dung `.env` hoac application profile rieng, nhung file chua secret phai nam trong `.gitignore`.
+File mau production khong chua secret that dat tai `backend/env.production.example`.
 
 #### Spring profile de xuat
 
@@ -1469,7 +1477,7 @@ Nhom nay lam truoc khi lam AI sau hon, vi AI patch/preview se can mot editor du 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
 | 98 | Tao Dockerfile backend | Build image thanh cong |
-| 99 | Cau hinh env prod backend | Khong co secret trong repo |
+| 99 | Cau hinh env prod backend | `backend/env.production.example` chi chua placeholder, khong co secret trong repo |
 | 100 | Deploy backend | `/api/health` cloud tra 200 |
 | 101 | Build frontend production | `npm run build` pass |
 | 102 | Deploy frontend Cloudflare Pages | FE cloud mo duoc |
