@@ -51,8 +51,15 @@ class GeminiClient {
     }
 
     String generateText(String prompt) {
+        return generateText("text.generate", prompt);
+    }
+
+    String generateText(String feature, String prompt) {
         if (prompt == null || prompt.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Prompt is required");
+        }
+        if (feature == null || feature.isBlank() || feature.length() > 80) {
+            throw new IllegalArgumentException("AI feature is invalid");
         }
 
         var model = aiConfigService.textModel();
@@ -71,7 +78,7 @@ class GeminiClient {
                     throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request failed with status " + response.statusCode());
                 }
                 var text = extractText(response.body());
-                aiUsageLogService.record("text.generate", model, "SUCCESS", elapsedMillis(started), null);
+                aiUsageLogService.record(feature, model, "SUCCESS", elapsedMillis(started), null);
                 return text;
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
@@ -81,7 +88,7 @@ class GeminiClient {
             }
         } catch (ResponseStatusException exception) {
             aiUsageLogService.record(
-                    "text.generate",
+                    feature,
                     model,
                     "FAILED",
                     elapsedMillis(started),

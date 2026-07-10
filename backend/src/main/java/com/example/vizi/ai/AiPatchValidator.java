@@ -42,6 +42,18 @@ class AiPatchValidator {
         }
         return patch;
     }
+    AiTextLayer textLayer(String canvasJson, String layerId) {
+        var layer = requireLayer(layersById(canvasJson), layerId);
+        requireType(layer, "text", "Text rewrite");
+        var text = optionalString(layer, "text");
+        if (text == null) {
+            text = optionalString(layer, "value");
+        }
+        if (text == null || text.length() > 1_000) {
+            throw invalid("Text layer must contain at most 1000 characters");
+        }
+        return new AiTextLayer(layerId, text);
+    }
 
     private void validateAction(
             AiPatchAction action,
@@ -355,4 +367,7 @@ class AiPatchValidator {
     private static IllegalArgumentException invalid(String message) {
         return new IllegalArgumentException(message);
     }
+}
+
+record AiTextLayer(String layerId, String text) {
 }

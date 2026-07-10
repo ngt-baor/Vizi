@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 @Transactional(readOnly = true)
-class DesignService {
+public class DesignService {
 
     private final DesignRepository designRepository;
     private final DesignSnapshotRepository designSnapshotRepository;
@@ -61,6 +61,10 @@ class DesignService {
         return designRepository.findByIdAndUser_Id(designId, user.id())
                 .map(DesignDetail::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
+    }
+
+    public String getOwnedCanvas(Long designId, String email) {
+        return getOwnedDesign(designId, email).canvasJson();
     }
 
     @Transactional
