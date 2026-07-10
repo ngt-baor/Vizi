@@ -2,6 +2,8 @@ package com.example.vizi.ai;
 
 import java.util.List;
 
+import tools.jackson.databind.JsonNode;
+
 record AiPatch(
         int schemaVersion,
         AiEditStrength editStrength,
@@ -40,11 +42,13 @@ record AiPatchAction(
         Double width,
         Double height,
         Double opacity,
-        Double rotation
+        Double rotation,
+        JsonNode layer
 ) {
 
     boolean hasChange() {
-        return text != null || fill != null || stroke != null || strokeWidth != null
+        return "remove_layer".equals(op) || layer != null
+                || text != null || fill != null || stroke != null || strokeWidth != null
                 || fontFamily != null || fontSize != null || fontWeight != null
                 || lineHeight != null || letterSpacing != null || x != null || y != null
                 || width != null || height != null || opacity != null || rotation != null;

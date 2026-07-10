@@ -24,7 +24,7 @@ class AiPatchSchema {
     private static final Set<String> ACTION_FIELDS = Set.of(
             "op", "layerId", "text", "fill", "stroke", "strokeWidth", "fontFamily",
             "fontSize", "fontWeight", "lineHeight", "letterSpacing", "x", "y", "width",
-            "height", "opacity", "rotation"
+            "height", "opacity", "rotation", "layer"
     );
 
     private final ObjectMapper objectMapper;
@@ -93,7 +93,8 @@ class AiPatchSchema {
                 optionalNumber(node, "width"),
                 optionalNumber(node, "height"),
                 optionalNumber(node, "opacity"),
-                optionalNumber(node, "rotation")
+                optionalNumber(node, "rotation"),
+                optionalObject(node, "layer")
         );
         if (!action.hasChange()) {
             throw invalid("Patch action " + index + " must include a change");
@@ -176,6 +177,17 @@ class AiPatchSchema {
             throw invalid(field + " must be a finite number");
         }
         return value.doubleValue();
+    }
+
+    private static JsonNode optionalObject(JsonNode object, String field) {
+        var value = object.get(field);
+        if (value == null) {
+            return null;
+        }
+        if (!value.isObject()) {
+            throw invalid(field + " must be an object");
+        }
+        return value;
     }
 
     private static <T extends Enum<T>> T requiredEnum(JsonNode object, String field, Class<T> type) {
