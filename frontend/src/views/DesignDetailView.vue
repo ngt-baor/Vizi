@@ -95,6 +95,7 @@ const redoLayerStack = ref<CanvasLayer[][]>([]);
 const editorZoom = ref(100);
 const editorPanX = ref(0);
 const editorPanY = ref(0);
+const assetFileInput = ref<HTMLInputElement | null>(null);
 const assetPreviewUrl = ref("");
 const assetPreviewName = ref("");
 const assetPreviewSize = ref("");
@@ -778,6 +779,9 @@ function handleLayerContextMenuKeyup(event: KeyboardEvent): void {
 function selectTool(tool: EditorTool): void {
   activeTool.value = tool;
   saveMessage.value = "";
+  if (tool === "image" && !assetPreviewFile.value) {
+    assetFileInput.value?.click();
+  }
 }
 
 function selectLayer(index: number, event?: MouseEvent | KeyboardEvent): void {
@@ -1708,6 +1712,7 @@ onUnmounted(() => {
             <label class="editor-upload-control">
               <span>Image preview</span>
               <input
+                ref="assetFileInput"
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 aria-label="Preview image asset"
