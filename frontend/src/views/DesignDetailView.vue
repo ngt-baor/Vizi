@@ -13,7 +13,6 @@ import {
   Lock,
   Move,
   MousePointer2,
-  QrCode,
   Square,
   RotateCcw,
   RotateCw,
@@ -26,7 +25,6 @@ import {
   ZoomIn,
   ZoomOut,
 } from "@lucide/vue";
-import * as QRCode from "qrcode";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
@@ -48,7 +46,7 @@ type CanvasLayer = Record<string, unknown> & {
   type?: string;
 };
 type EditorPage = "front" | "back";
-type EditorTool = "select" | "text" | "rect" | "ellipse" | "shape" | "image" | "qr" | "icon";
+type EditorTool = "select" | "text" | "rect" | "ellipse" | "shape" | "image" | "icon";
 type ColorTarget = "fill" | "stroke";
 type LayerPanelItem = {
   index: number;
@@ -104,10 +102,6 @@ const assetPreviewFile = ref<File | null>(null);
 const assetPreviewPixelWidth = ref(0);
 const assetPreviewPixelHeight = ref(0);
 const assetUploading = ref(false);
-const qrText = ref("https://vizi.local/card");
-const qrPreviewUrl = ref("");
-const qrPreviewError = ref("");
-const qrGenerating = ref(false);
 const aiRewritePrompt = ref("");
 const aiRewriteStrength = ref<AiEditStrength>("light");
 const aiRewriteLoading = ref(false);
@@ -130,7 +124,6 @@ const editorTools: { id: EditorTool; label: string; icon: typeof MousePointer2 }
   { id: "rect", label: "Rect", icon: Square },
   { id: "ellipse", label: "Ellipse", icon: Circle },
   { id: "image", label: "Image", icon: ImageIcon },
-  { id: "qr", label: "QR", icon: QrCode },
   { id: "icon", label: "Icon", icon: Sticker },
 ];
 const colorTargets: { id: ColorTarget; label: string }[] = [
@@ -500,67 +493,6 @@ async function addPreviewAssetToCanvas(x = 12, y = 12): Promise<void> {
   }
 }
 
-async function generateQrPreview(): Promise<void> {
-  const value = qrText.value.trim();
-  qrPreviewError.value = "";
-  qrPreviewUrl.value = "";
-  if (!value) {
-    qrPreviewError.value = "QR text is required.";
-    return;
-  }
-  if (value.length > 500) {
-    qrPreviewError.value = "QR text must be 500 characters or fewer.";
-    return;
-  }
-
-  qrGenerating.value = true;
-  try {
-    qrPreviewUrl.value = await QRCode.toDataURL(value, {
-      errorCorrectionLevel: "M",
-      margin: 1,
-      width: 256,
-      color: {
-        dark: "#1f1a12",
-        light: "#ffffff",
-      },
-    });
-  } catch {
-    qrPreviewError.value = "Cannot generate QR code.";
-  } finally {
-    qrGenerating.value = false;
-  }
-}
-
-async function addQrToCanvas(): Promise<void> {
-  const value = qrText.value.trim();
-  if (!value || selectedPage.value !== "front") {
-    qrPreviewError.value = value ? "" : "QR text is required.";
-    return;
-  }
-  if (!qrPreviewUrl.value) {
-    await generateQrPreview();
-  }
-  if (!qrPreviewUrl.value) {
-    return;
-  }
-
-  const layer: CanvasLayer = {
-    type: "qr",
-    name: "QR code",
-    text: value,
-    src: qrPreviewUrl.value,
-    x: 66,
-    y: 12,
-    width: 22,
-    height: 22,
-    fill: "#ffffff",
-    opacity: 1,
-  };
-  const layers = [...editableLayers.value, layer];
-  commitLayers(layers, [layers.length - 1]);
-  activeTool.value = "qr";
-}
-
 function layerPlacementFromPointer(event: PointerEvent, width: number, height: number): { x: number; y: number } {
   const frame = (event.target as HTMLElement | null)?.closest<HTMLElement>(".canvas-frame");
   if (!frame) {
@@ -595,36 +527,6 @@ async function handleCanvasPointerDown(event: PointerEvent): Promise<void> {
       return;
     }
     await addPreviewAssetToCanvas(x, y);
-    return;
-  }
-
-  if (activeTool.value === "qr") {
-    const { x, y } = layerPlacementFromPointer(event, 18, 18);
-    const value = qrText.value.trim();
-    if (!value) {
-      qrPreviewError.value = "QR text is required.";
-      return;
-    }
-    if (!qrPreviewUrl.value) {
-      await generateQrPreview();
-    }
-    if (!qrPreviewUrl.value) {
-      return;
-    }
-    const layer: CanvasLayer = {
-      type: "qr",
-      name: "QR code",
-      text: value,
-      src: qrPreviewUrl.value,
-      x,
-      y,
-      width: 18,
-      height: 18,
-      fill: "#ffffff",
-      opacity: 1,
-    };
-    const layers = [...editableLayers.value, layer];
-    commitLayers(layers, [layers.length - 1]);
     return;
   }
 
@@ -1744,33 +1646,6 @@ onUnmounted(() => {
               <button type="button" @click="clearAssetPreview">Clear</button>
             </figure>
             <p v-else-if="!assetPreviewError" class="muted">No uploaded assets</p>
-            <div class="editor-qr-generator" aria-label="QR generator">
-              <label>
-                <span>QR text</span>
-                <textarea
-                  v-model="qrText"
-                  maxlength="500"
-                  rows="3"
-                  aria-label="QR text"
-                />
-              </label>
-              <button type="button" :disabled="qrGenerating" @click="generateQrPreview">
-                {{ qrGenerating ? "Generating..." : "Generate QR" }}
-              </button>
-              <p v-if="qrPreviewError" class="error-text editor-upload-error" role="alert">
-                {{ qrPreviewError }}
-              </p>
-              <figure v-if="qrPreviewUrl" class="editor-asset-preview editor-qr-preview">
-                <img :src="qrPreviewUrl" :alt="`QR code for ${qrText}`">
-                <figcaption>
-                  <strong>QR code</strong>
-                  <span>{{ qrText }}</span>
-                </figcaption>
-                <button type="button" :disabled="selectedPage !== 'front'" @click="addQrToCanvas">
-                  Add QR to canvas
-                </button>
-              </figure>
-            </div>
           </section>
         </aside>
 
