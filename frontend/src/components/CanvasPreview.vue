@@ -70,9 +70,13 @@ function layerImageSource(layer: CanvasLayer): string {
 
 function layerClass(layer: CanvasLayer): string {
   const type = stringValue(layer.type, "unknown");
-  return ["text", "rect", "ellipse", "shape", "image", "qr"].includes(type)
+  return ["text", "icon", "rect", "ellipse", "shape", "image", "qr"].includes(type)
     ? `canvas-layer--${type}`
     : "canvas-layer--unknown";
+}
+
+function layerIsTextLike(layer: CanvasLayer): boolean {
+  return layer.type === "text" || layer.type === "icon";
 }
 
 function layerIsVisible(layer: CanvasLayer): boolean {
@@ -88,8 +92,9 @@ function layerIsSelected(index: number): boolean {
 function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const x = numberValue(layer.x, 8);
   const y = numberValue(layer.y, 8);
-  const width = numberValue(layer.width, layer.type === "text" ? 45 : 32);
-  const height = numberValue(layer.height, layer.type === "text" ? 16 : 26);
+  const textLike = layerIsTextLike(layer);
+  const width = numberValue(layer.width, textLike ? 45 : 32);
+  const height = numberValue(layer.height, textLike ? 16 : 26);
   const fontSize = numberValue(layer.fontSize, 14);
   const stroke = stringValue(layer.stroke, "rgba(122, 93, 46, 0.18)");
   const strokeWidth = numberValue(layer.strokeWidth, 1);
@@ -112,21 +117,20 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
     top: `${y}%`,
     width: `${width}%`,
     height: `${height}%`,
-    color: stringValue(layer.color, "#2f281c"),
-    background: stringValue(
-      layer.fill ?? layer.background,
-      layer.type === "text" ? "transparent" : "rgba(255,255,255,0.72)",
-    ),
-    border: layer.type === "text" ? "0" : `${strokeWidth}px solid ${stroke}`,
+    color: stringValue(layer.color ?? layer.fill, "#2f281c"),
+    background: textLike
+      ? "transparent"
+      : stringValue(layer.fill ?? layer.background, "rgba(255,255,255,0.72)"),
+    border: textLike ? "0" : `${strokeWidth}px solid ${stroke}`,
     borderRadius: layer.type === "ellipse" ? "9999px" : `${numberValue(layer.radius, 10)}px`,
     fontFamily: stringValue(layer.fontFamily, "inherit"),
-    fontSize: layer.type === "text"
+    fontSize: textLike
       ? `min(${fontSize}px, ${(fontSize / 5.2).toFixed(4)}cqw)`
       : `${fontSize}px`,
     fontWeight: numberValue(layer.fontWeight, 700),
     opacity: numberValue(layer.opacity, 1),
-    boxShadow: layer.type === "text" ? "none" : shadow,
-    textShadow: layer.type === "text" ? textShadow : "none",
+    boxShadow: textLike ? "none" : shadow,
+    textShadow: textLike ? textShadow : "none",
     filter: blur > 0 ? `blur(${blur}px)` : "none",
     transform: `rotate(${numberValue(layer.rotation, 0)}deg)`,
     transformOrigin: "center center",

@@ -684,18 +684,19 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
     };
   }
   if (tool === "icon") {
-    const size = { width: 10, height: 10 };
+    const size = { width: 8, height: 8 };
     const position = layerPlacementFromPointer(event, size.width, size.height);
     return {
-      type: "shape",
+      type: "icon",
       name: "Icon",
       text: "◆",
       ...position,
       ...size,
       fill: "#2f281c",
-      stroke: "#2f281c",
-      strokeWidth: 1,
-      radius: 6,
+      color: "#2f281c",
+      fontFamily: "Georgia",
+      fontSize: 22,
+      fontWeight: 700,
       opacity: 1,
     };
   }
