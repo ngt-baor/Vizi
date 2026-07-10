@@ -49,6 +49,16 @@ type CanvasLayer = Record<string, unknown> & {
 type EditorPage = "front" | "back";
 type EditorTool = "select" | "text" | "shape" | "image" | "qr" | "icon";
 type ColorTarget = "fill" | "stroke";
+type LayerPanelItem = {
+  index: number;
+  number: number;
+  layer: CanvasLayer;
+};
+type LayerContextMenuState = {
+  index: number;
+  x: number;
+  y: number;
+};
 type AiRewritePreviewState = {
   response: AiTextRewriteResponse;
   layerId: string;
@@ -72,6 +82,8 @@ const selectedPage = ref<EditorPage>("front");
 const activeTool = ref<EditorTool>("select");
 const selectedLayerIndex = ref(0);
 const selectedLayerIndexes = ref<number[]>([0]);
+const draggingLayerIndex = ref<number | null>(null);
+const layerContextMenu = ref<LayerContextMenuState | null>(null);
 const activeColorTarget = ref<ColorTarget>("fill");
 const undoLayerStack = ref<CanvasLayer[][]>([]);
 const redoLayerStack = ref<CanvasLayer[][]>([]);
@@ -155,6 +167,11 @@ const editorCanvasLayers = computed<CanvasLayer[]>(() =>
 const displayedCanvasLayers = computed<CanvasLayer[]>(() =>
   isEditorRoute.value ? editorCanvasLayers.value : canvasLayers.value,
 );
+const layerPanelItems = computed<LayerPanelItem[]>(() =>
+  displayedCanvasLayers.value
+    .map((layer, index) => ({ layer, index, number: displayedCanvasLayers.value.length - index }))
+    .reverse(),
+);
 const canvasLayerCount = computed(() => displayedCanvasLayers.value.length);
 const selectedLayer = computed<CanvasLayer | null>(
   () => selectedLayerIndexes.value.length > 0
@@ -210,12 +227,16 @@ const canDeleteSelectedLayers = computed(() =>
 const editorCanvasTransform = computed(() => ({
   transform: `translate(${editorPanX.value}px, ${editorPanY.value}px) scale(${editorZoom.value / 100})`,
 }));
+const layerContextMenuStyle = computed(() => ({
+  left: `${layerContextMenu.value?.x ?? 0}px`,
+  top: `${layerContextMenu.value?.y ?? 0}px`,
+}));
 const selectedLayerLabel = computed(() => {
   if (selectedLayerIndexes.value.length > 1) {
     return `${selectedLayerIndexes.value.length} layers selected`;
   }
   const layer = selectedLayer.value;
-  return layer ? `${selectedLayerIndex.value + 1}. ${optionalString(layer.type) ?? "Layer"}` : "No layer";
+  return layer ? `${layerPanelNumber(selectedLayerIndex.value)}. ${layerDisplayName(layer)}` : "No layer";
 });
 const activeColorValue = computed(() => {
   const layer = selectedLayer.value;
@@ -260,6 +281,16 @@ function isCanvasLayer(layer: unknown): layer is CanvasLayer {
 
 function optionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function layerDisplayName(layer: CanvasLayer): string {
+  return optionalString(layer.name)
+    ?? optionalString(layer.type)
+    ?? "Layer";
+}
+
+function layerPanelNumber(index: number): number {
+  return Math.max(1, displayedCanvasLayers.value.length - index);
 }
 
 function layerIsVisible(layer: CanvasLayer): boolean {
@@ -429,7 +460,7 @@ function backendAssetUrl(url: string): string {
   return url.startsWith("/") ? `${apiBaseUrl}${url}` : url;
 }
 
-async function addPreviewAssetToCanvas(): Promise<void> {
+async function addPreviewAssetToCanvas(x = 12, y = 12): Promise<void> {
   if (!assetPreviewFile.value || assetUploading.value || selectedPage.value !== "front") {
     return;
   }
@@ -444,8 +475,8 @@ async function addPreviewAssetToCanvas(): Promise<void> {
       src: backendAssetUrl(uploaded.url),
       assetId: uploaded.assetId,
       storageKey: uploaded.storageKey,
-      x: 12,
-      y: 12,
+      x,
+      y,
       width: 32,
       height: 32,
       opacity: 1,
@@ -521,6 +552,124 @@ async function addQrToCanvas(): Promise<void> {
   const layers = [...editableLayers.value, layer];
   commitLayers(layers, [layers.length - 1]);
   activeTool.value = "qr";
+}
+
+function layerPlacementFromPointer(event: PointerEvent, width: number, height: number): { x: number; y: number } {
+  const frame = (event.target as HTMLElement | null)?.closest<HTMLElement>(".canvas-frame");
+  if (!frame) {
+    return { x: 50 - width / 2, y: 50 - height / 2 };
+  }
+  const rect = frame.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * 100 - width / 2;
+  const y = ((event.clientY - rect.top) / rect.height) * 100 - height / 2;
+  return {
+    x: Math.round(clamp(x, 0, 100 - width) * 100) / 100,
+    y: Math.round(clamp(y, 0, 100 - height) * 100) / 100,
+  };
+}
+
+async function handleCanvasPointerDown(event: PointerEvent): Promise<void> {
+  if (selectedPage.value !== "front") {
+    clearLayerSelection();
+    return;
+  }
+  if (activeTool.value === "select") {
+    clearLayerSelection();
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (activeTool.value === "image") {
+    const { x, y } = layerPlacementFromPointer(event, 28, 28);
+    if (!assetPreviewFile.value) {
+      assetPreviewError.value = "Choose an image in Assets before placing it.";
+      return;
+    }
+    await addPreviewAssetToCanvas(x, y);
+    return;
+  }
+
+  if (activeTool.value === "qr") {
+    const { x, y } = layerPlacementFromPointer(event, 18, 18);
+    if (!qrPreviewUrl.value) {
+      await generateQrPreview();
+    }
+    const layer: CanvasLayer = {
+      type: "qr",
+      name: "QR code",
+      text: qrText.value.trim() || "https://vizi.local/card",
+      src: qrPreviewUrl.value,
+      x,
+      y,
+      width: 18,
+      height: 18,
+      fill: "#ffffff",
+      opacity: 1,
+    };
+    const layers = [...editableLayers.value, layer];
+    commitLayers(layers, [layers.length - 1]);
+    return;
+  }
+
+  const layer = createToolLayer(activeTool.value, event);
+  if (!layer) {
+    return;
+  }
+  const layers = [...editableLayers.value, layer];
+  commitLayers(layers, [layers.length - 1]);
+}
+
+function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | null {
+  if (tool === "text") {
+    const size = { width: 28, height: 10 };
+    const position = layerPlacementFromPointer(event, size.width, size.height);
+    return {
+      type: "text",
+      name: "Text",
+      text: "Text",
+      ...position,
+      ...size,
+      color: "#2f281c",
+      fontFamily: "Georgia",
+      fontSize: 20,
+      fontWeight: 700,
+      opacity: 1,
+    };
+  }
+  if (tool === "shape") {
+    const size = { width: 24, height: 16 };
+    const position = layerPlacementFromPointer(event, size.width, size.height);
+    return {
+      type: "rect",
+      name: "Board",
+      ...position,
+      ...size,
+      fill: "#ffffff",
+      stroke: "#b1b2b5",
+      strokeWidth: 1,
+      radius: 4,
+      opacity: 1,
+    };
+  }
+  if (tool === "icon") {
+    const size = { width: 10, height: 10 };
+    const position = layerPlacementFromPointer(event, size.width, size.height);
+    return {
+      type: "shape",
+      name: "Icon",
+      text: "◆",
+      ...position,
+      ...size,
+      fill: "#2f281c",
+      stroke: "#2f281c",
+      strokeWidth: 1,
+      radius: 6,
+      opacity: 1,
+    };
+  }
+  return null;
 }
 
 function startCanvasPan(event: PointerEvent): void {
@@ -605,6 +754,11 @@ function clearLayerSelection(): void {
 }
 
 function startLayerDrag(index: number, event: PointerEvent): void {
+  if (activeTool.value !== "select") {
+    void handleCanvasPointerDown(event);
+    return;
+  }
+
   const wasSelected = selectedLayerIndexes.value.includes(index);
   if (!wasSelected || event.shiftKey || event.ctrlKey || event.metaKey) {
     selectLayer(index, event);
@@ -985,6 +1139,92 @@ function moveLayer(index: number, direction: -1 | 1): void {
   commitLayers(layers, nextSelectedIndexes);
 }
 
+function layerPanelIndex(index: number): number {
+  return layerPanelItems.value.findIndex((item) => item.index === index);
+}
+
+function canMoveLayerInPanel(index: number, direction: -1 | 1): boolean {
+  const panelIndex = layerPanelIndex(index);
+  const nextPanelIndex = panelIndex + direction;
+  return panelIndex >= 0 && nextPanelIndex >= 0 && nextPanelIndex < layerPanelItems.value.length;
+}
+
+function moveLayerInPanel(index: number, direction: -1 | 1): void {
+  const panelIndex = layerPanelIndex(index);
+  if (panelIndex < 0) {
+    return;
+  }
+  reorderLayerByPanelIndex(index, panelIndex + direction);
+}
+
+function reorderLayerByPanelIndex(sourceIndex: number, targetPanelIndex: number): void {
+  const panelOrder = layerPanelItems.value.map((item) => item.index);
+  const currentPanelIndex = panelOrder.indexOf(sourceIndex);
+  if (currentPanelIndex < 0 || targetPanelIndex < 0 || targetPanelIndex >= panelOrder.length) {
+    return;
+  }
+
+  const [moved] = panelOrder.splice(currentPanelIndex, 1);
+  panelOrder.splice(targetPanelIndex, 0, moved);
+  const nextOrder = panelOrder.reverse();
+  const oldToNew = new Map(nextOrder.map((oldIndex, newIndex) => [oldIndex, newIndex]));
+  const layers = nextOrder.map((oldIndex) => editableLayers.value[oldIndex]).filter(isCanvasLayer);
+  const nextSelectedIndexes = selectedLayerIndexes.value
+    .map((selected) => oldToNew.get(selected))
+    .filter((index): index is number => typeof index === "number")
+    .sort((left, right) => left - right);
+  commitLayers(layers, nextSelectedIndexes.length ? nextSelectedIndexes : [oldToNew.get(sourceIndex) ?? 0]);
+}
+
+function startLayerPanelDrag(index: number, event: DragEvent): void {
+  draggingLayerIndex.value = index;
+  layerContextMenu.value = null;
+  event.dataTransfer?.setData("text/plain", String(index));
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+  }
+}
+
+function dropLayerOnPanel(index: number, event: DragEvent): void {
+  event.preventDefault();
+  const source = Number(event.dataTransfer?.getData("text/plain") ?? draggingLayerIndex.value);
+  draggingLayerIndex.value = null;
+  if (!Number.isInteger(source) || source === index) {
+    return;
+  }
+  const targetPanelIndex = layerPanelIndex(index);
+  reorderLayerByPanelIndex(source, targetPanelIndex);
+}
+
+function openLayerContextMenu(index: number, event: MouseEvent): void {
+  event.preventDefault();
+  selectLayer(index, event);
+  layerContextMenu.value = { index, x: event.clientX, y: event.clientY };
+}
+
+function closeLayerContextMenu(): void {
+  layerContextMenu.value = null;
+}
+
+function renameLayer(index: number): void {
+  const layer = editableLayers.value[index];
+  if (!layer) {
+    return;
+  }
+  const nextName = window.prompt("Layer name", layerDisplayName(layer));
+  if (nextName === null) {
+    return;
+  }
+  const trimmed = nextName.trim().slice(0, 80);
+  if (!trimmed) {
+    return;
+  }
+  const layers = [...editableLayers.value];
+  layers[index] = { ...layer, name: trimmed };
+  commitLayers(layers, [index]);
+  closeLayerContextMenu();
+}
+
 function duplicateSelectedLayers(): void {
   if (!canDuplicateSelectedLayers.value) {
     return;
@@ -1284,52 +1524,41 @@ onUnmounted(() => {
               </button>
             </div>
             <ol class="editor-layer-list">
-              <li v-for="(layer, index) in displayedCanvasLayers" :key="index">
+              <li
+                v-for="item in layerPanelItems"
+                :key="item.index"
+                draggable="true"
+                @dragstart="startLayerPanelDrag(item.index, $event)"
+                @dragend="draggingLayerIndex = null"
+                @dragover.prevent
+                @drop="dropLayerOnPanel(item.index, $event)"
+              >
                 <div
                   class="editor-layer-row"
-                  :class="{ active: selectedLayerIndexes.includes(index) }"
+                  :class="{ active: selectedLayerIndexes.includes(item.index) }"
+                  @contextmenu="openLayerContextMenu(item.index, $event)"
                 >
                   <button
                     type="button"
                     class="editor-layer-button"
-                    :aria-pressed="selectedLayerIndexes.includes(index)"
-                    :aria-label="`Select layer ${index + 1} ${layer.type || 'Layer'}`"
-                    @click="selectLayer(index, $event)"
+                    :aria-pressed="selectedLayerIndexes.includes(item.index)"
+                    :aria-label="`Select layer ${item.number} ${layerDisplayName(item.layer)}`"
+                    @click="selectLayer(item.index, $event)"
                   >
-                    <span>{{ index + 1 }}</span>
-                    <strong>{{ layer.type || "Layer" }}</strong>
+                    <span class="editor-layer-number">{{ item.number }}</span>
+                    <strong>{{ layerDisplayName(item.layer) }}</strong>
                   </button>
-                  <div class="editor-layer-actions" :aria-label="`Layer ${index + 1} actions`">
+                  <div class="editor-layer-actions" :aria-label="`Layer ${item.number} actions`">
                     <button
                       type="button"
                       class="editor-layer-toggle"
-                      :disabled="index === 0"
-                      :aria-label="`Move layer ${index + 1} up`"
-                      title="Move layer up"
-                      @click="moveLayer(index, -1)"
-                    >
-                      <ArrowUp :size="16" :stroke-width="1.8" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      class="editor-layer-toggle"
-                      :disabled="index === displayedCanvasLayers.length - 1"
-                      :aria-label="`Move layer ${index + 1} down`"
-                      title="Move layer down"
-                      @click="moveLayer(index, 1)"
-                    >
-                      <ArrowDown :size="16" :stroke-width="1.8" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      class="editor-layer-toggle"
-                      :aria-pressed="!layerIsVisible(layer)"
-                      :aria-label="`${layerIsVisible(layer) ? 'Hide' : 'Show'} layer ${index + 1}`"
-                      :title="layerIsVisible(layer) ? 'Hide layer' : 'Show layer'"
-                      @click="toggleLayerVisibility(index)"
+                      :aria-pressed="!layerIsVisible(item.layer)"
+                      :aria-label="`${layerIsVisible(item.layer) ? 'Hide' : 'Show'} layer ${item.number}`"
+                      :title="layerIsVisible(item.layer) ? 'Hide layer' : 'Show layer'"
+                      @click="toggleLayerVisibility(item.index)"
                     >
                       <component
-                        :is="layerIsVisible(layer) ? Eye : EyeOff"
+                        :is="layerIsVisible(item.layer) ? Eye : EyeOff"
                         :size="16"
                         :stroke-width="1.8"
                         aria-hidden="true"
@@ -1338,13 +1567,13 @@ onUnmounted(() => {
                     <button
                       type="button"
                       class="editor-layer-toggle editor-layer-toggle--lock"
-                      :aria-pressed="layerIsLocked(layer)"
-                      :aria-label="`${layerIsLocked(layer) ? 'Unlock' : 'Lock'} layer ${index + 1}`"
-                      :title="layerIsLocked(layer) ? 'Unlock layer' : 'Lock layer'"
-                      @click="toggleLayerLock(index)"
+                      :aria-pressed="layerIsLocked(item.layer)"
+                      :aria-label="`${layerIsLocked(item.layer) ? 'Unlock' : 'Lock'} layer ${item.number}`"
+                      :title="layerIsLocked(item.layer) ? 'Unlock layer' : 'Lock layer'"
+                      @click="toggleLayerLock(item.index)"
                     >
                       <component
-                        :is="layerIsLocked(layer) ? Lock : Unlock"
+                        :is="layerIsLocked(item.layer) ? Lock : Unlock"
                         :size="16"
                         :stroke-width="1.8"
                         aria-hidden="true"
@@ -1354,7 +1583,46 @@ onUnmounted(() => {
                 </div>
               </li>
             </ol>
-            <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
+            <div
+              v-if="layerContextMenu"
+              class="editor-layer-context-menu"
+              role="menu"
+              :style="layerContextMenuStyle"
+              @click.stop
+              @contextmenu.prevent
+            >
+              <button type="button" role="menuitem" @click="duplicateSelectedLayers(); closeLayerContextMenu()">
+                Copy
+              </button>
+              <button type="button" role="menuitem" @click="deleteSelectedLayers(); closeLayerContextMenu()">
+                Delete
+              </button>
+              <button type="button" role="menuitem" @click="renameLayer(layerContextMenu.index)">
+                Rename
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                :disabled="!canMoveLayerInPanel(layerContextMenu.index, -1)"
+                @click="moveLayerInPanel(layerContextMenu.index, -1); closeLayerContextMenu()"
+              >
+                Move up
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                :disabled="!canMoveLayerInPanel(layerContextMenu.index, 1)"
+                @click="moveLayerInPanel(layerContextMenu.index, 1); closeLayerContextMenu()"
+              >
+                Move down
+              </button>
+              <button type="button" role="menuitem" @click="toggleLayerVisibility(layerContextMenu.index); closeLayerContextMenu()">
+                {{ layerIsVisible(editableLayers[layerContextMenu.index]) ? "Hide" : "Show" }}
+              </button>
+              <button type="button" role="menuitem" @click="toggleLayerLock(layerContextMenu.index); closeLayerContextMenu()">
+                {{ layerIsLocked(editableLayers[layerContextMenu.index]) ? "Unlock" : "Lock" }}
+              </button>
+            </div>`r`n            <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
           </section>
           <section class="editor-section">
             <h2>Assets</h2>
@@ -1384,7 +1652,7 @@ onUnmounted(() => {
                     || assetPreviewPixelWidth <= 0
                     || assetPreviewPixelHeight <= 0
                 "
-                @click="addPreviewAssetToCanvas"
+                @click="() => addPreviewAssetToCanvas()"
               >
                 {{ assetUploading ? "Uploading..." : "Add to canvas" }}
               </button>
@@ -1484,7 +1752,7 @@ onUnmounted(() => {
               :resizable-layer-index="resizableLayerIndex"
               :rotatable-layer-index="rotatableLayerIndex"
               interactive
-              @canvas-pointerdown="clearLayerSelection"
+              @canvas-pointerdown="handleCanvasPointerDown"
               @layer-pointerdown="startLayerDrag"
               @layer-resize-pointerdown="startLayerResize"
               @layer-rotate-pointerdown="startLayerRotate"
