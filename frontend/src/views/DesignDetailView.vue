@@ -59,6 +59,9 @@ type LayerContextMenuState = {
   x: number;
   y: number;
 };
+const layerContextMenuWidth = 176;
+const layerContextMenuHeight = 260;
+const layerContextMenuMargin = 8;
 type AiRewritePreviewState = {
   response: AiTextRewriteResponse;
   layerId: string;
@@ -84,6 +87,7 @@ const selectedLayerIndex = ref(0);
 const selectedLayerIndexes = ref<number[]>([0]);
 const draggingLayerIndex = ref<number | null>(null);
 const layerContextMenu = ref<LayerContextMenuState | null>(null);
+const layerContextMenuElement = ref<HTMLElement | null>(null);
 const activeColorTarget = ref<ColorTarget>("fill");
 const undoLayerStack = ref<CanvasLayer[][]>([]);
 const redoLayerStack = ref<CanvasLayer[][]>([]);
@@ -707,7 +711,16 @@ function targetAcceptsTextInput(target: EventTarget | null): boolean {
 }
 
 function handleEditorShortcut(event: KeyboardEvent): void {
-  if (!isEditorRoute.value || targetAcceptsTextInput(event.target)) {
+  if (!isEditorRoute.value) {
+    return;
+  }
+  if (event.key === "Escape" && layerContextMenu.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeLayerContextMenu();
+    return;
+  }
+  if (targetAcceptsTextInput(event.target)) {
     return;
   }
 
@@ -728,6 +741,15 @@ function handleEditorShortcut(event: KeyboardEvent): void {
   }
 }
 
+
+function handleLayerContextMenuKeyup(event: KeyboardEvent): void {
+  if (!isEditorRoute.value || event.key !== "Escape" || !layerContextMenu.value) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  closeLayerContextMenu();
+}
 function selectTool(tool: EditorTool): void {
   activeTool.value = tool;
   saveMessage.value = "";
@@ -1196,14 +1218,37 @@ function dropLayerOnPanel(index: number, event: DragEvent): void {
   reorderLayerByPanelIndex(source, targetPanelIndex);
 }
 
+function layerContextMenuPosition(x: number, y: number): { x: number; y: number } {
+  if (typeof window === "undefined") {
+    return { x, y };
+  }
+  return {
+    x: clamp(x, layerContextMenuMargin, Math.max(layerContextMenuMargin, window.innerWidth - layerContextMenuWidth - layerContextMenuMargin)),
+    y: clamp(y, layerContextMenuMargin, Math.max(layerContextMenuMargin, window.innerHeight - layerContextMenuHeight - layerContextMenuMargin)),
+  };
+}
+
 function openLayerContextMenu(index: number, event: MouseEvent): void {
   event.preventDefault();
+  event.stopPropagation();
   selectLayer(index, event);
-  layerContextMenu.value = { index, x: event.clientX, y: event.clientY };
+  layerContextMenu.value = { index, ...layerContextMenuPosition(event.clientX, event.clientY) };
+  window.requestAnimationFrame(() => layerContextMenuElement.value?.focus());
 }
 
 function closeLayerContextMenu(): void {
   layerContextMenu.value = null;
+}
+
+function handleGlobalPointerDown(event: PointerEvent): void {
+  if (!layerContextMenu.value) {
+    return;
+  }
+  const target = event.target;
+  if (target instanceof HTMLElement && target.closest(".editor-layer-context-menu")) {
+    return;
+  }
+  closeLayerContextMenu();
 }
 
 function renameLayer(index: number): void {
@@ -1406,7 +1451,9 @@ async function deleteDraft(): Promise<void> {
 }
 
 onMounted(async () => {
-  window.addEventListener("keydown", handleEditorShortcut);
+  document.addEventListener("keydown", handleEditorShortcut, true);
+  document.addEventListener("keyup", handleLayerContextMenuKeyup, true);
+  document.addEventListener("pointerdown", handleGlobalPointerDown, true);
   if (!Number.isFinite(designId.value)) {
     error.value = "Draft id is invalid";
     loading.value = false;
@@ -1426,7 +1473,9 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener("keydown", handleEditorShortcut);
+  document.removeEventListener("keydown", handleEditorShortcut, true);
+  document.removeEventListener("keyup", handleLayerContextMenuKeyup, true);
+  document.removeEventListener("pointerdown", handleGlobalPointerDown, true);
   revokeAssetPreview();
 });
 </script>
@@ -1585,10 +1634,14 @@ onUnmounted(() => {
             </ol>
             <div
               v-if="layerContextMenu"
+              ref="layerContextMenuElement"
               class="editor-layer-context-menu"
               role="menu"
+              tabindex="-1"
               :style="layerContextMenuStyle"
               @click.stop
+              @keydown.esc.prevent.stop="closeLayerContextMenu"
+              @keyup.esc.prevent.stop="closeLayerContextMenu"
               @contextmenu.prevent
             >
               <button type="button" role="menuitem" @click="duplicateSelectedLayers(); closeLayerContextMenu()">
