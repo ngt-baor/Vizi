@@ -412,6 +412,7 @@ async function addPreviewAssetToCanvas(): Promise<void> {
       type: "image",
       name: assetPreviewName.value || uploaded.fileName,
       src: backendAssetUrl(uploaded.url),
+      assetId: uploaded.assetId,
       storageKey: uploaded.storageKey,
       x: 12,
       y: 12,

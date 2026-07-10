@@ -8,9 +8,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import com.example.vizi.auth.AuthService;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,18 +28,29 @@ class ImageUploadService {
     );
 
     private final Path imageDirectory;
+    private final AssetRepository assetRepository;
+    private final AuthService authService;
 
-    ImageUploadService(@Value("${app.upload.image-dir:.vizi-uploads/images}") String imageDirectory) {
+    ImageUploadService(
+            @Value("${app.upload.image-dir:.vizi-uploads/images}") String imageDirectory,
+            AssetRepository assetRepository,
+            AuthService authService
+    ) {
         this.imageDirectory = Path.of(imageDirectory).toAbsolutePath().normalize();
+        this.assetRepository = assetRepository;
+        this.authService = authService;
     }
 
-    ImageUploadResponse store(MultipartFile file) {
+    @Transactional
+    ImageUploadResponse store(MultipartFile file, String email) {
         validateFile(file);
 
+        var user = authService.requireUser(email);
         var contentType = normalizeContentType(file.getContentType());
         var extension = EXTENSIONS_BY_CONTENT_TYPE.get(contentType);
         var fileName = UUID.randomUUID() + "." + extension;
         var storageKey = "images/" + fileName;
+        var fileUrl = "/uploads/" + storageKey;
         var target = imageDirectory.resolve(fileName).normalize();
         if (!target.startsWith(imageDirectory)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid file name");
@@ -45,17 +59,36 @@ class ImageUploadService {
         try {
             Files.createDirectories(imageDirectory);
             file.transferTo(target);
+            var asset = assetRepository.saveAndFlush(new Asset(
+                    user,
+                    fileUrl,
+                    fileName,
+                    contentType,
+                    file.getSize()
+            ));
+            return new ImageUploadResponse(
+                    asset.id(),
+                    fileName,
+                    contentType,
+                    file.getSize(),
+                    storageKey,
+                    fileUrl
+            );
         } catch (IOException exception) {
+            deleteQuietly(target);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot store image");
+        } catch (RuntimeException exception) {
+            deleteQuietly(target);
+            throw exception;
         }
+    }
 
-        return new ImageUploadResponse(
-                fileName,
-                contentType,
-                file.getSize(),
-                storageKey,
-                "/uploads/" + storageKey
-        );
+    private static void deleteQuietly(Path target) {
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException ignored) {
+            // Preserve the original storage/database failure.
+        }
     }
 
     private void validateFile(MultipartFile file) {

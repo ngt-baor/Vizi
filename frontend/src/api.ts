@@ -37,6 +37,7 @@ export type DesignDetail = {
 export type DesignListItem = Omit<DesignDetail, "canvasJson">;
 
 export type ImageUploadResponse = {
+  assetId: number;
   fileName: string;
   contentType: string;
   sizeBytes: number;

@@ -1,6 +1,7 @@
 package com.example.vizi.upload;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -20,7 +21,7 @@ class ImageUploadController {
 
     @PostMapping("/images")
     @ResponseStatus(HttpStatus.CREATED)
-    ImageUploadResponse uploadImage(@RequestPart("file") MultipartFile file) {
-        return imageUploadService.store(file);
+    ImageUploadResponse uploadImage(@RequestPart("file") MultipartFile file, Authentication authentication) {
+        return imageUploadService.store(file, authentication.getName());
     }
 }
