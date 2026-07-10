@@ -241,7 +241,16 @@ const selectedIconAsset = computed(() =>
   iconAssets.find((icon) => icon.id === selectedIconId.value) ?? iconAssets[0],
 );
 function normalizeIconSearchText(value: string): string {
-  return value.trim().toLocaleLowerCase();
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u0111/g, "d");
+}
+
+function iconSearchTerms(value: string): string[] {
+  return normalizeIconSearchText(value).split(/\s+/).filter(Boolean);
 }
 
 function iconSearchHaystack(icon: IconAsset): string {
@@ -254,11 +263,14 @@ function iconSearchHaystack(icon: IconAsset): string {
 }
 
 const filteredIconAssets = computed(() => {
-  const query = normalizeIconSearchText(iconSearchQuery.value);
-  if (!query) {
+  const terms = iconSearchTerms(iconSearchQuery.value);
+  if (terms.length === 0) {
     return iconAssets;
   }
-  return iconAssets.filter((icon) => iconSearchHaystack(icon).includes(query));
+  return iconAssets.filter((icon) => {
+    const haystack = iconSearchHaystack(icon);
+    return terms.every((term) => haystack.includes(term));
+  });
 });
 const editorCanvasLayers = computed<CanvasLayer[]>(() =>
   selectedPage.value === "front" ? canvasLayers.value : [],
