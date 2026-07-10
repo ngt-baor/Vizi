@@ -11,7 +11,7 @@ San pham khong chi tao ra anh xem truoc. Gia tri cot loi cua Vizi la luu thiet k
 ### 2.1. Muc tieu chinh
 
 - Cho phep nguoi dung tao card visit tu template co san.
-- Cho phep tuy bien noi dung card: ten thuong hieu, logo, ho ten, chuc vu, so dien thoai, email, dia chi, website, mang xa hoi va ma QR.
+- Cho phep tuy bien noi dung card: ten thuong hieu, logo, ho ten, chuc vu, so dien thoai, email, dia chi, website, mang xa hoi va icon co ban.
 - Cho phep chinh sua truc quan bang canvas editor.
 - Luu thiet ke de nguoi dung co the quay lai sua sau.
 - Kiem tra loi co ban truoc khi dat in.
@@ -48,7 +48,7 @@ MVP nen tap trung vao mot luong hoan chinh, nho nhung dung duoc:
 1. Nguoi dung xem danh sach template card visit.
 2. Nguoi dung chon mot template.
 3. He thong mo template trong editor.
-4. Nguoi dung sua text, mau sac, logo va ma QR.
+4. Nguoi dung sua text, mau sac, logo va icon/hinh co ban.
 5. Nguoi dung luu thiet ke.
 6. He thong kiem tra loi co ban truoc khi dat in.
 7. Nguoi dung chon cau hinh in.
@@ -113,7 +113,7 @@ Quyet dinh cap nhat cho huong editor:
 - Konva.js la phuong an thay the neu can scene graph gon hon, nhung se phai tu lam nhieu control editor hon.
 - Giao dien editor nen la phong cach professional luxury va full-screen. Huong dung: hai sidebar trai/phai mau toi, canvas card visit nam giua tren workspace sang/xam nhat, toolbar tha noi tren canvas va quick color bar phia duoi giong workflow Penpot/Figma.
 - Vao trang edit phai cam giac la cong cu thiet ke chuyen nghiep, khong phai trang form web thong thuong. Header/nav marketing nen toi gian hoac an tren editor de uu tien full man hinh.
-- AI de sau editor thu cong. Thu tu dung la lam editor, layer, save/load, upload, QR, pre-flight truoc; AI patch/generate chi lam khi editor da on dinh.
+- AI de sau editor thu cong. Thu tu dung la lam editor, layer, save/load, upload, icon/asset search co ban va pre-flight truoc; AI patch/generate chi lam khi editor da on dinh.
 
 ### 5.2.1. Vizi Editor Lite
 
@@ -131,7 +131,6 @@ Vizi Editor
 |   |-- Text
 |   |-- Shape
 |   |-- Image
-|   |-- QR
 |   |-- Icon
 |
 |-- Center canvas
@@ -194,9 +193,9 @@ Thu tu uu tien editor:
 8. Shape/image tools: fill, stroke, opacity.
 9. Undo/redo.
 10. Upload anh.
-11. QR layer.
-12. Asset/icon search.
-13. AI patch sau cung.
+11. Asset/icon search.
+12. AI patch sau cung.
+13. QR code neu sau MVP can bat lai.
 
 Rang buoc rieng cho page/card:
 
@@ -211,7 +210,7 @@ Rang buoc rieng cho page/card:
 Moi object tren canvas nen duoc coi la mot layer co id rieng. Layer can co metadata de phuc vu editor, AI va undo/redo:
 
 - `id`
-- `type`: text, image, shape, qr, group
+- `type`: text, image, shape, icon, group
 - `name`
 - `locked`
 - `visible`
@@ -222,7 +221,7 @@ Moi object tren canvas nen duoc coi la mot layer co id rieng. Layer can co metad
 - `rotation`
 - `zIndex`
 - `editable`
-- `semanticRole`: logo, brandName, phone, email, address, qrCode, background
+- `semanticRole`: logo, brandName, phone, email, address, icon, background
 
 Khong nen chi luu anh PNG/JPG vi se mat kha nang sua tung thanh phan.
 
@@ -254,21 +253,11 @@ Undo/redo co the lam o frontend bang stack state trong phien lam viec. Backend n
 
 Khong nen luu moi thao tac keo tha vao database vi se tang du lieu rat nhanh.
 
-### 5.6. QR code
+### 5.6. QR code (tam hoan sau MVP)
 
-Nguoi dung co the tao QR code dan den:
+Cap nhat buoc 86: QR khong con la tinh nang MVP/current editor. QR da duoc loai khoi MVP tu buoc 84 de editor gon hon va tap trung vao text, shape, image, icon/asset search. Cac checklist cu lien quan QR chi duoc giu nhu lich su, khong dung lam muc tieu tiep theo.
 
-- Website.
-- Facebook fanpage.
-- TikTok.
-- Instagram.
-- Zalo.
-- Linktree/portfolio.
-- Google Maps.
-- So dien thoai.
-- Email.
-
-QR code nen duoc luu duoi dang data co the tao lai, khong chi luu anh raster.
+Neu sau nay bat lai QR, can thiet ke lai nhu mot layer rieng co data goc tao lai duoc, khong chi luu anh raster.
 
 ### 5.7. Upload anh
 
@@ -289,7 +278,7 @@ Truoc khi dat in, he thong can kiem tra:
 - Thiet ke dung kich thuoc.
 - Text khong nam ngoai safe zone.
 - Anh khong qua mo hoac do phan giai qua thap.
-- Co noi dung bat buoc nhu ten, so dien thoai hoac ma QR neu template yeu cau.
+- Co noi dung bat buoc nhu ten, so dien thoai hoac email neu template yeu cau.
 - Mat truoc/mat sau khong trong rong.
 - Bleed zone duoc cau hinh dung.
 
@@ -722,7 +711,6 @@ Luu y: nen kiem tra phien ban moi nhat va trang thai bao mat tren nguon chinh th
 
 - React hoac Vue.
 - Fabric.js hoac Konva.js cho canvas.
-- QR generation library.
 - Thu vien upload/crop anh neu can.
 
 Luu y: nen kiem tra phien ban moi nhat tren npm va changelog bao mat truoc khi cai package.
@@ -970,11 +958,11 @@ Day la co che chinh de AI sua thiet ke. AI chi duoc tra ve action hop le:
     },
     {
       "op": "update_geometry",
-      "layerId": "qrCode",
+      "layerId": "brandLogo",
       "x": 72,
-      "y": 68,
-      "width": 18,
-      "height": 18,
+      "y": 18,
+      "width": 16,
+      "height": 16,
       "rotation": 0
     }
   ]
@@ -1057,7 +1045,7 @@ Khong nen tao card thanh mot anh phang duy nhat. Nen tao canvas JSON co the sua 
 Prompt vi du:
 
 ```text
-Tao card visit cho quan ca phe phong cach vintage, mau nau kem, co QR va so dien thoai.
+Tao card visit cho quan ca phe phong cach vintage, mau nau kem, co icon hat ca phe va so dien thoai.
 ```
 
 Output nen la canvas editable:
@@ -1080,12 +1068,14 @@ Output nen la canvas editable:
         "fill": "#3B2416"
       },
       {
-        "id": "qrCode",
-        "type": "qr",
-        "value": "https://example.com",
-        "x": 430,
-        "y": 220,
-        "size": 72
+        "id": "coffeeIcon",
+        "type": "icon",
+        "text": "★",
+        "x": 72,
+        "y": 18,
+        "width": 8,
+        "height": 8,
+        "fill": "#3B2416"
       }
     ]
   }
@@ -1193,7 +1183,7 @@ Khong lam: tao card thanh anh phang khong editable.
 - Sua text, mau, logo.
 - Undo/redo frontend.
 - Save/autosave.
-- QR code.
+- Icon/asset search co ban.
 
 ### Phase 3: Checkout
 
@@ -1211,7 +1201,7 @@ Khong lam: tao card thanh anh phang khong editable.
 
 ### Phase 5: AI
 
-- Lam sau khi editor thu cong, upload, QR va pre-flight da on dinh.
+- Lam sau khi editor thu cong, upload, icon/asset search co ban va pre-flight da on dinh.
 - AI action patch.
 - Preview truoc khi apply.
 - Goi y mau sac/bo cuc.
@@ -1330,7 +1320,7 @@ Nhom nay la cong viec nen lam tiep ngay. Muc tieu la bien trang sua draft thanh 
 | 42A | Tao `/editor/:designId` va dieu huong tu draft/template sang editor | Mo URL editor load dung design id |
 | 42B | Tach renderer canvas hien co thanh component dung lai | Template detail, draft detail va editor render cung mot cach |
 | 42C | Tao editor shell 2 ben va canvas giua | Co left sidebar, center canvas, right properties |
-| 42D | Tao floating toolbar ban dau | Hien Select, Text, Shape, Image, QR, Icon; chua can day du hanh vi |
+| 42D | Tao floating toolbar ban dau | Hien Select, Text, Shape, Image, Icon; chua can day du hanh vi |
 | 42E | Tao page switch co dinh `Front` / `Back` | Chuyen duoc 2 mat va khong co nut them page |
 | 42F | Giu card giua man hinh theo `widthMm` / `heightMm` | Card dung ti le kich thuoc card visit da chon |
 | 42G | Luu text edit qua design API | Refresh editor van giu noi dung da sua |
@@ -1363,7 +1353,7 @@ Nhom nay lam sau buoc 56 va truoc khi coi editor la Canva/Figma-lite. Cac buoc 4
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
 | 56A | Hoan thien editor shell responsive | Left sidebar, center canvas, right properties khong tran tren desktop/mobile |
-| 56B | Gan floating toolbar voi tool state | Chon duoc select, text, shape, image, QR, icon |
+| 56B | Gan floating toolbar voi tool state | Chon duoc select, text, shape, image, icon |
 | 56C | Tao bottom quick color bar | Doi nhanh fill/stroke tu recent colors |
 | 56D | Tao layer panel | Click layer tren panel thi canvas select dung layer |
 | 56E | An/hien layer | Layer hidden khong render nhung van con trong JSON |
@@ -1386,11 +1376,11 @@ Moc hoan thien:
 
 - Het buoc 56: editor MVP co the sua card co ban.
 - Het buoc 56R: editor dat muc Canva/Figma-lite cho thao tac layer co ban.
-- Het buoc 62: editor co upload anh va QR.
+- Het buoc 62: editor co upload anh; QR da tam hoan sau MVP.
 - Het buoc 89: editor co asset/icon search basic.
 - Het buoc 92: editor co asset/icon search thong minh bang embedding.
 
-#### Nhom 7: Upload, asset va QR
+#### Nhom 7: Upload va asset
 
 | Buoc | Viec lam | Kiem thu |
 | --- | --- | --- |
@@ -1398,8 +1388,8 @@ Moc hoan thien:
 | 58 | Tao `POST /api/uploads/images` | Backend nhan file va tra URL/assetId |
 | 59 | Luu asset metadata | DB co asset record |
 | 60 | Them asset vao canvas | Save/load van con anh |
-| 61 | Tao QR code frontend | QR scan duoc |
-| 62 | Luu QR layer trong `canvas_json` | Reload van co QR |
+| 61 | Tam hoan QR code frontend | Frontend khong con QR tool/generator |
+| 62 | Xac nhan QR khong con trong editor MVP | Build/smoke khong con QR UI |
 
 #### Nhom 8: Pre-flight va checkout
 

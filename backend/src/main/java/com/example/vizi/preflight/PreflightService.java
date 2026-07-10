@@ -93,12 +93,12 @@ public class PreflightService {
                 continue;
             }
             if (x < safeX || y < safeY || x + width > 100 - safeX || y + height > 100 - safeY) {
-                var critical = type.equals("text") || type.equals("qr");
+                var critical = type.equals("text");
                 issues.add(new PreflightIssue(
                         critical ? "ERROR" : "WARNING",
                         "LAYER_OUTSIDE_SAFE_ZONE",
                         critical
-                                ? "Text and QR layers must stay inside the 3 mm safe zone."
+                                ? "Text layers must stay inside the 3 mm safe zone."
                                 : "Layer extends outside the 3 mm safe zone.",
                         index
                 ));

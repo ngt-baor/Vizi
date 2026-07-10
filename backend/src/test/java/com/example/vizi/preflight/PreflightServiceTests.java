@@ -52,7 +52,24 @@ class PreflightServiceTests {
         assertThat(report.issues()).containsExactly(new PreflightIssue(
                 "ERROR",
                 "LAYER_OUTSIDE_SAFE_ZONE",
-                "Text and QR layers must stay inside the 3 mm safe zone.",
+                "Text layers must stay inside the 3 mm safe zone.",
+                0
+        ));
+    }
+
+    @Test
+    void qrOutsideSafeZoneReturnsNonBlockingWarning() {
+        var report = preflightService.check(
+                "{\"layers\":[{\"type\":\"qr\",\"x\":0,\"y\":0,\"width\":20,\"height\":20}]}",
+                90,
+                54
+        );
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.issues()).containsExactly(new PreflightIssue(
+                "WARNING",
+                "LAYER_OUTSIDE_SAFE_ZONE",
+                "Layer extends outside the 3 mm safe zone.",
                 0
         ));
     }
