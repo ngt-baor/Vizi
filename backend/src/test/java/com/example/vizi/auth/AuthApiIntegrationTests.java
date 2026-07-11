@@ -145,6 +145,34 @@ class AuthApiIntegrationTests {
     }
 
     @Test
+    void repeatedLoginFailuresAreRateLimited() throws Exception {
+        register("ratelimit@example.test", "StrongPass123");
+
+        for (int index = 0; index < 10; index++) {
+            mockMvc.perform(post("/api/auth/login")
+                            .with(csrf())
+                            .with(request -> {
+                                request.setRemoteAddr("198.51.100.109");
+                                return request;
+                            })
+                            .param("email", "ratelimit@example.test")
+                            .param("password", "WrongPass123"))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(csrf())
+                        .with(request -> {
+                            request.setRemoteAddr("198.51.100.109");
+                            return request;
+                        })
+                        .param("email", "ratelimit@example.test")
+                        .param("password", "WrongPass123"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.message").value("Too many requests"));
+    }
+
+    @Test
     void csrfEndpointIssuesSessionToken() throws Exception {
         mockMvc.perform(get("/api/auth/csrf"))
                 .andExpect(status().isOk())

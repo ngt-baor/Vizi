@@ -11,6 +11,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 
 @Configuration
@@ -33,7 +34,7 @@ class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, RateLimitFilter rateLimitFilter) throws Exception {
         var csrfRepository = new HttpSessionCsrfTokenRepository();
 
         http
@@ -41,6 +42,7 @@ class SecurityConfig {
                 })
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
                 .httpBasic(AbstractHttpConfigurer::disable)
+                .addFilterAfter(rateLimitFilter, CsrfFilter.class)
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/templates/**", "/api/auth/csrf")
                         .permitAll()
