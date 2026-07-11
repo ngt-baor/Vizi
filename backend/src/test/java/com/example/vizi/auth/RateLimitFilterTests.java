@@ -34,6 +34,12 @@ class RateLimitFilterTests {
     }
 
     @Test
+    void uploadRouteIsRateLimited() throws Exception {
+        assertAllowed("POST", "/api/uploads/images", "198.51.100.50", 10);
+        assertBlocked("POST", "/api/uploads/images", "198.51.100.50");
+    }
+
+    @Test
     void unlistedRoutesPassThrough() throws Exception {
         assertAllowed("GET", "/api/health", "198.51.100.40", 40);
     }

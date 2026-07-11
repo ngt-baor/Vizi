@@ -179,6 +179,31 @@ class ImageUploadApiTests {
     }
 
     @Test
+    void repeatedImageUploadsAreRateLimited() throws Exception {
+        for (int index = 0; index < 10; index++) {
+            mockMvc.perform(multipart("/api/uploads/images")
+                            .file(pngFile("logo-" + index + ".png"))
+                            .with(user("owner@example.test"))
+                            .with(csrf())
+                            .with(request -> {
+                                request.setRemoteAddr("198.51.100.210");
+                                return request;
+                            }))
+                    .andExpect(status().isCreated());
+        }
+
+        mockMvc.perform(multipart("/api/uploads/images")
+                        .file(pngFile("blocked.png"))
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .with(request -> {
+                            request.setRemoteAddr("198.51.100.210");
+                            return request;
+                        }))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.message").value("Too many requests"));
+    }
+    @Test
     void svgAndMismatchedContentAreRejected() throws Exception {
         var svg = new MockMultipartFile(
                 "file",
