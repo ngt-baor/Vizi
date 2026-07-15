@@ -1,4 +1,4 @@
-HELP.md
+﻿HELP.md
 target/
 node_modules/
 frontend/node_modules/
@@ -48,24 +48,13 @@ build/
 .continue/
 .aider*
 .codex-work/
+
+### Environment / logs ###
 .env
 .env.*
 !.env.example
 !frontend/.env.example
 *.log
 
-### Local harness / agent memory ###
-.agents/
-.codex/
-.claude/
-.cursor/
-.copilot/
-.windsurf/
-.gemini/
-.continue/
-.aider*
-.env
-.env.*
-!.env.example
-!frontend/.env.example
-*.log
+### Local runtime uploads ###
+backend/.vizi-uploads/

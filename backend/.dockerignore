@@ -1,0 +1,6 @@
+﻿target/
+.vizi-uploads/
+*.log
+.env
+.env.*
+!.env.example

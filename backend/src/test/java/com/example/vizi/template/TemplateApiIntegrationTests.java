@@ -91,6 +91,7 @@ class TemplateApiIntegrationTests {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("\"id\":" + activeA.id());
         assertThat(response.body()).contains("\"id\":" + activeB.id());
+        assertThat(response.body()).contains("\"canvasJson\"");
         assertThat(response.body()).doesNotContain("Hidden Card");
         assertThat(response.body().indexOf("Basic Card")).isLessThan(response.body().indexOf("Spa Card"));
     }

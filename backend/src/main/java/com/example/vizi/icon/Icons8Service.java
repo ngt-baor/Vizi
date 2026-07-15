@@ -1,0 +1,171 @@
+package com.example.vizi.icon;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+
+@Service
+class Icons8Service {
+
+    private static final String CREDIT_TEXT = "Icons by Icons8";
+    private static final String CREDIT_URL = "https://icons8.com";
+    private static final int MAX_QUERY_LENGTH = 80;
+
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+    private final String apiKey;
+    private final String searchBaseUrl;
+
+    @Autowired
+    Icons8Service(
+            ObjectMapper objectMapper,
+            @Value("${app.icons8.api-key:}") String apiKey,
+            @Value("${app.icons8.search-base-url:https://search.icons8.com/api/iconsets/v5/search}") String searchBaseUrl
+    ) {
+        this(objectMapper, HttpClient.newHttpClient(), apiKey, searchBaseUrl);
+    }
+
+    Icons8Service(ObjectMapper objectMapper, HttpClient httpClient, String apiKey, String searchBaseUrl) {
+        this.objectMapper = objectMapper;
+        this.httpClient = httpClient;
+        this.apiKey = apiKey == null ? "" : apiKey.trim();
+        this.searchBaseUrl = searchBaseUrl == null || searchBaseUrl.isBlank()
+                ? "https://search.icons8.com/api/iconsets/v5/search"
+                : searchBaseUrl.trim();
+    }
+
+    Icons8SearchResponse search(String term, String language, String platform, int amount) {
+        var cleanTerm = validateTerm(term);
+        var cleanLanguage = normalizeSimpleToken(language, "en");
+        var cleanPlatform = normalizeSimpleToken(platform, "");
+        var cleanAmount = Math.max(1, Math.min(amount, 48));
+
+        try {
+            var request = HttpRequest.newBuilder(endpoint(cleanTerm, cleanLanguage, cleanPlatform, cleanAmount))
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "Vizi/1.0")
+                    .header("Api-Key", apiKey)
+                    .GET()
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Icons8 request failed with status " + response.statusCode());
+            }
+            return parseResponse(response.body());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Icons8 request was interrupted", exception);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Icons8 request failed", exception);
+        }
+    }
+
+    private URI endpoint(String term, String language, String platform, int amount) {
+        var query = new StringBuilder()
+                .append("term=").append(encode(term))
+                .append("&amount=").append(amount)
+                .append("&language=").append(encode(language));
+        if (!platform.isBlank()) {
+            query.append("&platform=").append(encode(platform));
+        }
+        return URI.create(searchBaseUrl + (searchBaseUrl.contains("?") ? "&" : "?") + query);
+    }
+
+    private Icons8SearchResponse parseResponse(String body) throws IOException {
+        var root = objectMapper.readTree(body);
+        var icons = root.path("icons");
+        if (!icons.isArray()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Icons8 response has no icons");
+        }
+        var result = new ArrayList<Icons8Icon>();
+        for (JsonNode icon : (ArrayNode) icons) {
+            var id = stringValue(icon, "id");
+            var name = stringValue(icon, "name");
+            if (id.isBlank() || name.isBlank()) {
+                continue;
+            }
+            var commonName = stringValue(icon, "commonName");
+            var platform = stringValue(icon, "platform");
+            result.add(new Icons8Icon(
+                    id,
+                    name,
+                    stringValue(icon, "category"),
+                    stringValue(icon, "subcategory"),
+                    platform,
+                    previewUrl(id),
+                    sourceUrl(id, commonName.isBlank() ? name : commonName),
+                    true,
+                    booleanValue(icon, "isColor"),
+                    booleanValue(icon, "isAnimated")
+            ));
+        }
+        return new Icons8SearchResponse(
+                true,
+                true,
+                CREDIT_TEXT,
+                CREDIT_URL,
+                stringValue(root, "message"),
+                List.copyOf(result)
+        );
+    }
+
+    private static String validateTerm(String term) {
+        if (term == null || term.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Icon search term is required");
+        }
+        var cleanTerm = term.trim();
+        if (cleanTerm.length() > MAX_QUERY_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Icon search term is too long");
+        }
+        return cleanTerm;
+    }
+
+    private static String normalizeSimpleToken(String value, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        var clean = value.trim();
+        return clean.matches("[A-Za-z0-9_-]{1,32}") ? clean : fallback;
+    }
+
+    private static String previewUrl(String id) {
+        return "https://img.icons8.com/?size=96&id=" + encode(id) + "&format=png&color=000000";
+    }
+
+    private static String sourceUrl(String id, String name) {
+        if (!name.isBlank()) {
+            return "https://icons8.com/icon/" + encode(id) + "/" + encode(name.toLowerCase().replace(' ', '-'));
+        }
+        return "https://icons8.com/icon/" + encode(id);
+    }
+
+    private static String stringValue(JsonNode object, String field) {
+        var value = object.path(field);
+        return value.isString() ? value.stringValue() : "";
+    }
+
+    private static boolean booleanValue(JsonNode object, String field) {
+        var value = object.path(field);
+        return value.isBoolean() && value.booleanValue();
+    }
+
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+}

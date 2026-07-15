@@ -25,7 +25,8 @@ class RateLimitFilter extends OncePerRequestFilter {
             "POST /api/auth/login", new Limit(10, Duration.ofMinutes(1)),
             "POST /api/auth/register", new Limit(20, Duration.ofMinutes(1)),
             "POST /api/ai/text/rewrite", new Limit(30, Duration.ofMinutes(1)),
-            "POST /api/uploads/images", new Limit(10, Duration.ofMinutes(1))
+            "POST /api/uploads/images", new Limit(10, Duration.ofMinutes(1)),
+            "GET /api/icons8/search", new Limit(60, Duration.ofMinutes(1))
     );
 
     private final Clock clock;

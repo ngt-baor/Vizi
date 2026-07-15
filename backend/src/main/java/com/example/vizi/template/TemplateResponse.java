@@ -8,7 +8,8 @@ record TemplateListItem(
         String category,
         String previewUrl,
         BigDecimal widthMm,
-        BigDecimal heightMm
+        BigDecimal heightMm,
+        String canvasJson
 ) {
     static TemplateListItem from(Template template) {
         return new TemplateListItem(
@@ -17,7 +18,8 @@ record TemplateListItem(
                 template.category(),
                 template.previewUrl(),
                 template.widthMm(),
-                template.heightMm()
+                template.heightMm(),
+                template.canvasJson()
         );
     }
 }

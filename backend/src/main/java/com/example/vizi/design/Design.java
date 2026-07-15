@@ -67,15 +67,34 @@ public class Design {
         this.updatedAt = createdAt;
     }
 
+    Design(User user, String name, String canvasJson, BigDecimal widthMm, BigDecimal heightMm) {
+        this.user = user;
+        this.template = null;
+        this.name = name;
+        this.canvasJson = canvasJson;
+        this.widthMm = widthMm;
+        this.heightMm = heightMm;
+        this.createdAt = Instant.now();
+        this.updatedAt = createdAt;
+    }
+
     public Long id() {
         return id;
+    }
+
+    public Long userId() {
+        return user == null ? null : user.id();
+    }
+
+    public String userEmail() {
+        return user == null ? null : user.email();
     }
 
     Long templateId() {
         return template == null ? null : template.id();
     }
 
-    String name() {
+    public String name() {
         return name;
     }
 
@@ -91,7 +110,7 @@ public class Design {
         return heightMm;
     }
 
-    Instant updatedAt() {
+    public Instant updatedAt() {
         return updatedAt;
     }
 

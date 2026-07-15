@@ -52,8 +52,11 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> unexpected(Exception exception, HttpServletRequest request) {
+        // Surface root cause class for faster local debugging (still 500).
+        String detail = exception.getClass().getSimpleName()
+                + (exception.getMessage() == null ? "" : (": " + exception.getMessage()));
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiError.of(500, "Unexpected server error", request.getRequestURI()));
+                .body(ApiError.of(500, detail, request.getRequestURI()));
     }
 }

@@ -65,6 +65,8 @@ class ImageUploadApiTests {
                     email varchar(320) not null unique,
                     password_hash varchar(255) not null,
                     full_name varchar(160) not null,
+                    phone varchar(40),
+                    address varchar(500),
                     role varchar(32) not null default 'USER',
                     created_at timestamp with time zone not null default current_timestamp,
                     updated_at timestamp with time zone not null default current_timestamp

@@ -44,10 +44,12 @@ class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .addFilterAfter(rateLimitFilter, CsrfFilter.class)
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.GET, "/api/health", "/api/templates/**", "/api/auth/csrf")
+                        .requestMatchers(HttpMethod.GET, "/api/health", "/api/templates/**", "/api/icons8/search", "/api/auth/csrf")
                         .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login")
                         .permitAll()
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMIN")
                         .anyRequest()
                         .authenticated())
                 .formLogin(form -> form

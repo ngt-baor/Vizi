@@ -9,6 +9,8 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import com.example.vizi.auth.AuthService;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,7 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 class TemplateServiceTests {
 
     private final TemplateRepository repository = mock(TemplateRepository.class);
-    private final TemplateService service = new TemplateService(repository);
+    private final AuthService authService = mock(AuthService.class);
+    private final TemplateService service = new TemplateService(repository, authService);
 
     @Test
     void listActiveTemplatesMapsEntitiesToPublicListItems() {

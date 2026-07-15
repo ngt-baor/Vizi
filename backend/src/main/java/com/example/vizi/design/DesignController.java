@@ -39,6 +39,15 @@ class DesignController {
         return designService.createFromTemplate(templateId, authentication.getName());
     }
 
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    DesignDetail createBlank(
+            @Valid @RequestBody CreateDesignRequest request,
+            Authentication authentication
+    ) {
+        return designService.createBlank(request, authentication.getName());
+    }
+
     @GetMapping("/{designId}")
     DesignDetail getDesign(@PathVariable Long designId, Authentication authentication) {
         return designService.getOwnedDesign(designId, authentication.getName());

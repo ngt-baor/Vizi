@@ -9,5 +9,7 @@ public interface TemplateRepository extends JpaRepository<Template, Long> {
 
     List<Template> findByActiveTrueOrderByIdAsc();
 
+    List<Template> findAllByOrderByIdAsc();
+
     Optional<Template> findByIdAndActiveTrue(Long id);
 }

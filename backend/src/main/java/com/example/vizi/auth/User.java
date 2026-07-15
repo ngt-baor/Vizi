@@ -27,33 +27,69 @@ public class User {
     @Column(nullable = false, length = 32)
     private String role;
 
+    @Column(length = 40)
+    private String phone;
+
+    @Column(length = 500)
+    private String address;
+
     protected User() {
     }
 
     public User(String email, String passwordHash, String fullName) {
+        this(email, passwordHash, fullName, "USER");
+    }
+
+    public User(String email, String passwordHash, String fullName, String role) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.fullName = fullName;
-        this.role = "USER";
+        this.role = role == null || role.isBlank() ? "USER" : role.trim().toUpperCase();
     }
 
     public Long id() {
         return id;
     }
 
-    String email() {
+    public String email() {
         return email;
     }
 
-    String passwordHash() {
+    public String passwordHash() {
         return passwordHash;
     }
 
-    String fullName() {
+    public String fullName() {
         return fullName;
     }
 
-    String role() {
+    public String role() {
         return role;
+    }
+
+    public String phone() {
+        return phone;
+    }
+
+    public String address() {
+        return address;
+    }
+
+    public boolean isAdmin() {
+        return "ADMIN".equalsIgnoreCase(role);
+    }
+
+    void updateProfile(String fullName, String phone, String address) {
+        this.fullName = fullName;
+        this.phone = phone;
+        this.address = address;
+    }
+
+    void changeEmail(String email) {
+        this.email = email;
+    }
+
+    void changePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 }

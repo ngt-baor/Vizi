@@ -69,12 +69,33 @@ class ViziOrder {
         return id;
     }
 
+    User user() {
+        return user;
+    }
+
     String status() {
         return status;
     }
 
+    void updateStatus(String status) {
+        this.status = status;
+        this.updatedAt = Instant.now();
+    }
+
     BigDecimal totalAmount() {
         return totalAmount;
+    }
+
+    String customerNote() {
+        return customerNote;
+    }
+
+    Instant createdAt() {
+        return createdAt;
+    }
+
+    Instant updatedAt() {
+        return updatedAt;
     }
 
     List<OrderItem> items() {

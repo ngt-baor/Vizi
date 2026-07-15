@@ -2,6 +2,7 @@ package com.example.vizi.order;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.Map;
 
 import com.example.vizi.auth.AuthService;
@@ -16,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
-class OrderService {
+public class OrderService {
 
     private static final Map<String, PaperOption> PAPER_OPTIONS = Map.of(
             "matte-350", new PaperOption("Matte 350gsm", new BigDecimal("180000")),
@@ -43,7 +44,7 @@ class OrderService {
     }
 
     @Transactional
-    OrderResponse createOrder(CreateOrderRequest request, String email) {
+    public OrderResponse createOrder(CreateOrderRequest request, String email) {
         var user = authService.requireUser(email);
         var design = designRepository.findByIdAndUser_Id(request.designId(), user.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
@@ -70,11 +71,40 @@ class OrderService {
     }
 
     @Transactional(readOnly = true)
-    OrderResponse getOwnedOrder(Long orderId, String email) {
+    public OrderResponse getOwnedOrder(Long orderId, String email) {
         var user = authService.requireUser(email);
         return orderRepository.findByIdAndUser_Id(orderId, user.id())
                 .map(OrderResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> listAllOrdersForAdmin(String adminEmail) {
+        authService.requireAdmin(adminEmail);
+        return orderRepository.findAllByOrderByCreatedAtDesc().stream().map(OrderResponse::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderForAdmin(Long orderId, String adminEmail) {
+        authService.requireAdmin(adminEmail);
+        return orderRepository.findById(orderId)
+                .map(OrderResponse::from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+    }
+
+    @Transactional
+    public OrderResponse updateOrderStatusForAdmin(Long orderId, String status, String adminEmail) {
+        authService.requireAdmin(adminEmail);
+        var allowed = java.util.Set.of(
+                "DRAFT", "PENDING_PAYMENT", "PAID", "PRINTING", "DONE", "CANCELLED"
+        );
+        if (status == null || !allowed.contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order status");
+        }
+        var order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+        order.updateStatus(status);
+        return OrderResponse.from(orderRepository.save(order));
     }
 
     private static BigDecimal calculateTotal(int quantity, PaperOption paper, boolean roundedCorners) {

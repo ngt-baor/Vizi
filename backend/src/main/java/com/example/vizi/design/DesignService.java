@@ -56,8 +56,41 @@ public class DesignService {
         return DesignDetail.from(designRepository.save(new Design(user, template)));
     }
 
+    @Transactional
+    DesignDetail createBlank(CreateDesignRequest request, String email) {
+        try {
+            var user = authService.requireUser(email);
+            String canvas = request.canvasJson() == null || request.canvasJson().isBlank()
+                    ? "{\"layers\":[]}"
+                    : request.canvasJson().trim();
+            validateCanvas(canvas);
+            var design = new Design(
+                    user,
+                    request.name().trim(),
+                    canvas,
+                    request.widthMm(),
+                    request.heightMm()
+            );
+            return DesignDetail.from(designRepository.save(design));
+        } catch (ResponseStatusException | IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Create design failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage(),
+                    exception
+            );
+        }
+    }
+
     DesignDetail getOwnedDesign(Long designId, String email) {
         var user = authService.requireUser(email);
+        // Admin may view any design (album / publish-to-template flow).
+        if (user.isAdmin()) {
+            return designRepository.findById(designId)
+                    .map(DesignDetail::from)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
+        }
         return designRepository.findByIdAndUser_Id(designId, user.id())
                 .map(DesignDetail::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));

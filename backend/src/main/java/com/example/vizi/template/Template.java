@@ -74,11 +74,11 @@ public class Template {
         return name;
     }
 
-    String category() {
+    public String category() {
         return category;
     }
 
-    String previewUrl() {
+    public String previewUrl() {
         return previewUrl;
     }
 
@@ -94,11 +94,33 @@ public class Template {
         return canvasJson;
     }
 
-    boolean active() {
+    public boolean active() {
         return active;
     }
 
     Instant createdAt() {
         return createdAt;
+    }
+
+    public void update(
+            String name,
+            String category,
+            String previewUrl,
+            BigDecimal widthMm,
+            BigDecimal heightMm,
+            String canvasJson,
+            boolean active
+    ) {
+        this.name = name;
+        this.category = category;
+        this.previewUrl = previewUrl;
+        this.widthMm = widthMm;
+        this.heightMm = heightMm;
+        this.canvasJson = canvasJson;
+        this.active = active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 }
