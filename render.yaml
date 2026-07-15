@@ -14,7 +14,7 @@ services:
       - key: APP_UPLOAD_IMAGE_DIR
         value: /tmp/vizi/uploads/images
       - key: APP_CORS_ALLOWED_ORIGINS
-        value: http://localhost:5173,http://127.0.0.1:5173
+        value: http://localhost:5173,http://127.0.0.1:5173,https://vizi.pages.dev
       - key: SPRING_DATASOURCE_URL
         sync: false
       - key: SPRING_DATASOURCE_USERNAME
