@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { createOrder, getDesign, type DesignDetail } from "../api";
+import {
+  createOrder,
+  getDesign,
+  preflightDesign,
+  type DesignDetail,
+  type PreflightReport,
+} from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
 
 type CanvasLayer = Record<string, unknown> & {
@@ -19,6 +25,10 @@ const submitting = ref(false);
 const paper = ref("matte-350");
 const quantity = ref(100);
 const roundedCorners = ref(false);
+const preflightReport = ref<PreflightReport | null>(null);
+const preflightLoading = ref(false);
+const preflightError = ref("");
+const forceOrderDespitePreflight = ref(false);
 
 const paperOptions = [
   { id: "matte-350", label: "Matte 350gsm", pricePer100: 180000 },
@@ -43,7 +53,14 @@ function parseCanvasLayers(canvasJson: string): CanvasLayer[] {
   try {
     const canvas = JSON.parse(canvasJson) as { layers?: unknown };
     return Array.isArray(canvas.layers)
-      ? canvas.layers.filter((layer): layer is CanvasLayer => typeof layer === "object" && layer !== null)
+      ? canvas.layers.filter((layer): layer is CanvasLayer => {
+        if (typeof layer !== "object" || layer === null) {
+          return false;
+        }
+        // Checkout preview shows front side; missing page defaults to front.
+        const page = (layer as CanvasLayer).page;
+        return page !== "back";
+      })
       : [];
   } catch {
     return [];
@@ -63,6 +80,26 @@ onMounted(async () => {
   }
 });
 
+async function runPreflight(): Promise<PreflightReport | null> {
+  if (!design.value || preflightLoading.value) {
+    return preflightReport.value;
+  }
+  preflightLoading.value = true;
+  preflightError.value = "";
+  try {
+    preflightReport.value = await preflightDesign(design.value.id);
+    return preflightReport.value;
+  } catch (unknownError) {
+    preflightError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot run preflight";
+    preflightReport.value = null;
+    return null;
+  } finally {
+    preflightLoading.value = false;
+  }
+}
+
 async function submitOrder() {
   if (!design.value || submitting.value) {
     return;
@@ -70,6 +107,11 @@ async function submitOrder() {
   submitting.value = true;
   orderError.value = "";
   try {
+    const report = preflightReport.value ?? await runPreflight();
+    if (report && !report.valid && !forceOrderDespitePreflight.value) {
+      orderError.value = "Preflight found blocking issues. Fix the design or confirm override.";
+      return;
+    }
     const order = await createOrder(design.value.id, paper.value, quantity.value, roundedCorners.value);
     await router.push({ name: "order-detail", params: { orderId: order.id } });
   } catch (unknownError) {
@@ -156,12 +198,38 @@ async function submitOrder() {
             </div>
           </dl>
 
+          <div class="checkout-preflight" aria-label="Preflight checks">
+            <button
+              class="secondary-action"
+              type="button"
+              :disabled="preflightLoading || submitting"
+              @click="runPreflight"
+            >
+              {{ preflightLoading ? "Running preflight..." : "Run preflight" }}
+            </button>
+            <p v-if="preflightError" class="error-text" role="alert">{{ preflightError }}</p>
+            <div v-if="preflightReport" role="status">
+              <strong>
+                {{ preflightReport.valid ? "Preflight passed" : "Preflight failed" }}
+              </strong>
+              <ul v-if="preflightReport.issues.length">
+                <li v-for="(issue, index) in preflightReport.issues" :key="`${issue.code}-${index}`">
+                  [{{ issue.level }}] {{ issue.message }}
+                </li>
+              </ul>
+              <label v-if="!preflightReport.valid" class="checkout-toggle">
+                <input v-model="forceOrderDespitePreflight" type="checkbox" />
+                <span>Create order anyway (override)</span>
+              </label>
+            </div>
+          </div>
+
           <p v-if="orderError" class="error-text" role="alert">
             {{ orderError }}
             <RouterLink v-if="orderError.includes('Sign in')" to="/account">Open account</RouterLink>
           </p>
 
-          <button class="primary-action" type="submit" :disabled="submitting">
+          <button class="primary-action" type="submit" :disabled="submitting || preflightLoading">
             {{ submitting ? "Creating order..." : "Create order" }}
           </button>
         </form>

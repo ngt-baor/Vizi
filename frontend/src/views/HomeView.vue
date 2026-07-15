@@ -8,6 +8,7 @@ import {
   type HealthResponse,
   type TemplateListItem,
 } from "../api";
+import TemplateThumbnail from "../components/TemplateThumbnail.vue";
 
 const health = ref<HealthResponse | null>(null);
 const templates = ref<TemplateListItem[]>([]);
@@ -75,14 +76,13 @@ onMounted(async () => {
           :to="{ name: 'template-detail', params: { id: template.id } }"
           class="template-card"
         >
-          <div class="template-preview" aria-hidden="true">
-            <img
-              v-if="template.previewUrl"
-              :src="template.previewUrl"
-              :alt="template.name"
-            />
-            <span v-else>{{ template.category }}</span>
-          </div>
+          <TemplateThumbnail
+            :name="template.name"
+            :preview-url="template.previewUrl"
+            :canvas-json="template.canvasJson"
+            :width-mm="template.widthMm"
+            :height-mm="template.heightMm"
+          />
           <div class="template-meta">
             <h3>{{ template.name }}</h3>
             <p>{{ template.category }} - {{ template.widthMm }} x {{ template.heightMm }} mm</p>

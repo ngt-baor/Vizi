@@ -26,10 +26,10 @@ const saveMessage = ref("");
 const saveError = ref("");
 
 const templateId = computed(() => Number(route.params.id));
-const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value);
+const canvasLayers = computed<CanvasLayer[]>(() => editableLayers.value.filter(isFrontLayer));
 const canvasLayerCount = computed(() => canvasLayers.value.length);
 const firstTextLayerIndex = computed(() =>
-  editableLayers.value.findIndex((layer) => layer.type === "text"),
+  editableLayers.value.findIndex((layer) => isFrontLayer(layer) && layer.type === "text"),
 );
 const firstTextLayerText = computed({
   get: () => {
@@ -52,6 +52,10 @@ const firstTextLayerText = computed({
 });
 function isCanvasLayer(layer: unknown): layer is CanvasLayer {
   return typeof layer === "object" && layer !== null;
+}
+
+function isFrontLayer(layer: CanvasLayer): boolean {
+  return layer.page !== "back";
 }
 
 function optionalString(value: unknown): string | null {
@@ -135,7 +139,7 @@ onMounted(async () => {
 
 <template>
   <section class="detail-view">
-    <RouterLink class="back-link" to="/">Back to templates</RouterLink>
+    <RouterLink class="back-link" to="/templates">Back to templates</RouterLink>
 
     <p v-if="loading" class="muted">Loading template...</p>
     <p v-else-if="error" class="error-text">{{ error }}</p>
@@ -156,7 +160,7 @@ onMounted(async () => {
         <h1>{{ template.name }}</h1>
         <p class="summary">
           {{ template.widthMm }} x {{ template.heightMm }} mm canvas with
-          {{ canvasLayerCount }} layer<span v-if="canvasLayerCount !== 1">s</span>.
+          {{ canvasLayerCount }} {{ canvasLayerCount === 1 ? "layer" : "layers" }}.
         </p>
 
         <div class="detail-actions">

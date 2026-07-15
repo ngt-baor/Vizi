@@ -11,17 +11,59 @@ export type TemplateListItem = {
   previewUrl: string | null;
   widthMm: number;
   heightMm: number;
-};
-
-export type TemplateDetail = TemplateListItem & {
   canvasJson: string;
 };
+
+export type TemplateDetail = TemplateListItem;
 
 export type AuthUser = {
   id: number;
   email: string;
   fullName: string;
   role: string;
+  phone?: string | null;
+  address?: string | null;
+};
+
+export type AdminOrder = {
+  id: number;
+  status: string;
+  totalAmount: number;
+  items: OrderItemResponse[];
+  userId: number | null;
+  userEmail: string | null;
+  userFullName: string | null;
+  customerNote: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AdminTemplate = TemplateDetail & {
+  active: boolean;
+};
+
+export type AdminUser = {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  phone?: string | null;
+  address?: string | null;
+  designCount: number;
+};
+
+export type AdminDesignItem = {
+  id: number;
+  userId: number;
+  name: string;
+  widthMm: number;
+  heightMm: number;
+  updatedAt: string;
+};
+
+export type AdminDesignDetail = AdminDesignItem & {
+  userEmail: string;
+  canvasJson: string;
 };
 
 export type DesignDetail = {
@@ -59,7 +101,31 @@ export type ImageUploadResponse = {
   url: string;
 };
 
+
+export type Icons8Icon = {
+  id: string;
+  name: string;
+  category: string;
+  subcategory: string;
+  platform: string;
+  previewUrl: string;
+  sourceUrl: string;
+  free: boolean;
+  color: boolean;
+  animated: boolean;
+};
+
+export type Icons8SearchResponse = {
+  configured: boolean;
+  creditRequired: boolean;
+  creditText: string;
+  creditUrl: string;
+  message: string;
+  icons: Icons8Icon[];
+};
+
 export type OrderItemResponse = {
+
   id: number;
   quantity: number;
   subtotal: number;
@@ -70,6 +136,18 @@ export type OrderResponse = {
   status: string;
   totalAmount: number;
   items: OrderItemResponse[];
+};
+
+export type PreflightIssue = {
+  level: string;
+  code: string;
+  message: string;
+  layerIndex: number | null;
+};
+
+export type PreflightReport = {
+  valid: boolean;
+  issues: PreflightIssue[];
 };
 
 type CsrfResponse = {
@@ -206,6 +284,145 @@ export async function logoutAccount(): Promise<void> {
   }
 }
 
+export async function updateProfile(
+  fullName: string,
+  phone: string,
+  address: string,
+): Promise<AuthUser> {
+  const response = await writeWithCsrf(
+    "/api/auth/me",
+    "PUT",
+    JSON.stringify({ fullName, phone, address }),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Update profile failed: ${response.status}`);
+  }
+  return response.json() as Promise<AuthUser>;
+}
+
+export async function changeAccountEmail(
+  newEmail: string,
+  currentPassword: string,
+): Promise<AuthUser> {
+  const response = await writeWithCsrf(
+    "/api/auth/me/email",
+    "PUT",
+    JSON.stringify({ newEmail, currentPassword }),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Change email failed: ${response.status}`);
+  }
+  return response.json() as Promise<AuthUser>;
+}
+
+export async function changeAccountPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const response = await writeWithCsrf(
+    "/api/auth/me/password",
+    "PUT",
+    JSON.stringify({ currentPassword, newPassword }),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Change password failed: ${response.status}`);
+  }
+}
+
+export async function adminListOrders(): Promise<AdminOrder[]> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/orders`, { credentials: "include" });
+  if (!response.ok) {
+    throw await authError(response, `Admin orders failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminOrder[]>;
+}
+
+export async function adminUpdateOrderStatus(orderId: number, status: string): Promise<AdminOrder> {
+  const response = await writeWithCsrf(
+    `/api/admin/orders/${orderId}/status`,
+    "PUT",
+    JSON.stringify({ status }),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Update order status failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminOrder>;
+}
+
+export async function adminListTemplates(): Promise<AdminTemplate[]> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/templates`, { credentials: "include" });
+  if (!response.ok) {
+    throw await authError(response, `Admin templates failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminTemplate[]>;
+}
+
+export async function adminSetTemplateActive(id: number, active: boolean): Promise<AdminTemplate> {
+  const response = await writeWithCsrf(
+    `/api/admin/templates/${id}/active`,
+    "PUT",
+    JSON.stringify({ active }),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Update template failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminTemplate>;
+}
+
+export async function adminPublishTemplate(payload: {
+  name: string;
+  category: string;
+  previewUrl?: string | null;
+  widthMm: number;
+  heightMm: number;
+  canvasJson: string;
+  active: boolean;
+}): Promise<AdminTemplate> {
+  const response = await writeWithCsrf(
+    "/api/admin/templates",
+    "POST",
+    JSON.stringify(payload),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Publish template failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminTemplate>;
+}
+
+export async function adminListUsers(): Promise<AdminUser[]> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/users`, { credentials: "include" });
+  if (!response.ok) {
+    throw await authError(response, `Admin users failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminUser[]>;
+}
+
+export async function adminGetDesign(designId: number): Promise<AdminDesignDetail> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/designs/${designId}`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw await authError(response, `Admin design failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminDesignDetail>;
+}
+
+export async function adminListUserDesigns(userId: number): Promise<AdminDesignItem[]> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/users/${userId}/designs`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw await authError(response, `Admin album failed: ${response.status}`);
+  }
+  return response.json() as Promise<AdminDesignItem[]>;
+}
+
 export async function getDesigns(): Promise<DesignListItem[]> {
   const response = await fetch(`${apiBaseUrl}/api/designs`, {
     credentials: "include",
@@ -243,6 +460,27 @@ export async function createDesignFromTemplate(templateId: number): Promise<Desi
     throw await authError(response, `Create draft failed: ${response.status}`);
   }
 
+  return response.json() as Promise<DesignDetail>;
+}
+
+export async function createBlankDesign(payload: {
+  name: string;
+  widthMm: number;
+  heightMm: number;
+  canvasJson?: string;
+}): Promise<DesignDetail> {
+  const response = await writeWithCsrf(
+    "/api/designs",
+    "POST",
+    JSON.stringify(payload),
+    "application/json",
+  );
+  if (response.status === 401) {
+    throw new Error("Sign in to save your draft");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Create draft failed: ${response.status}`);
+  }
   return response.json() as Promise<DesignDetail>;
 }
 
@@ -291,7 +529,32 @@ export async function uploadImageAsset(file: File): Promise<ImageUploadResponse>
   return response.json() as Promise<ImageUploadResponse>;
 }
 
+
+export async function searchIcons8(
+  term: string,
+  language = "en",
+  platform = "ios7",
+  amount = 24,
+): Promise<Icons8SearchResponse> {
+  const params = new URLSearchParams({
+    term,
+    language,
+    platform,
+    amount: String(amount),
+  });
+  const response = await fetch(`${apiBaseUrl}/api/icons8/search?${params}`, {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Icons8 search failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<Icons8SearchResponse>;
+}
+
 export async function rewriteDesignText(
+
   designId: number,
   layerId: string,
   prompt: string,
@@ -312,6 +575,18 @@ export async function rewriteDesignText(
   }
 
   return response.json() as Promise<AiTextRewriteResponse>;
+}
+
+export async function preflightDesign(designId: number): Promise<PreflightReport> {
+  const response = await writeWithCsrf(`/api/designs/${designId}/preflight`, "POST");
+  if (response.status === 401) {
+    throw new Error("Sign in to run preflight");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Preflight failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<PreflightReport>;
 }
 
 export async function createOrder(

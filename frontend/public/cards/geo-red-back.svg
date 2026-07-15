@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540">
+  <defs>
+    <clipPath id="card">
+      <rect width="900" height="540" rx="22" ry="22"/>
+    </clipPath>
+    <linearGradient id="redGrad" x1="0.15" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#c43c38"/>
+      <stop offset="40%" stop-color="#b0282c"/>
+      <stop offset="100%" stop-color="#8a121c"/>
+    </linearGradient>
+    <pattern id="whiteGeo" width="88" height="88" patternUnits="userSpaceOnUse">
+      <path d="M44 0 L88 44 L44 88 L0 44 Z" fill="none" stroke="#d6d6d6" stroke-width="1"/>
+      <path d="M0 0 L88 88 M88 0 L0 88" fill="none" stroke="#e5e5e5" stroke-width="0.8"/>
+    </pattern>
+    <pattern id="redGeo" width="110" height="110" patternUnits="userSpaceOnUse">
+      <path d="M55 0 L110 55 L55 110 L0 55 Z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="1.3"/>
+      <path d="M0 0 L110 110 M110 0 L0 110" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>
+      <path d="M55 0 V110 M0 55 H110" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="0.8"/>
+    </pattern>
+    <!-- Red right panel: wider at top (~42%), narrower at bottom (~56%) -->
+    <clipPath id="redPanel">
+      <path d="M390 0 H900 V540 H520 Z"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#card)">
+    <!-- White left base -->
+    <rect width="900" height="540" fill="#fafafa"/>
+    <rect width="900" height="540" fill="url(#whiteGeo)" opacity="0.9"/>
+
+    <!-- Red diagonal panel + facets -->
+    <g clip-path="url(#redPanel)">
+      <path d="M390 0 H900 V540 H520 Z" fill="url(#redGrad)"/>
+      <path d="M390 0 H900 V540 H520 Z" fill="url(#redGeo)"/>
+
+      <!-- Low-poly shards on red -->
+      <g stroke="none">
+        <path d="M420 0 L620 0 L560 110 L400 80 Z" fill="#d4554f" opacity="0.45"/>
+        <path d="M620 0 L900 0 L900 140 L700 100 Z" fill="#8e121c" opacity="0.4"/>
+        <path d="M450 90 L650 60 L700 220 L480 240 Z" fill="#a01c26" opacity="0.35"/>
+        <path d="M700 100 L900 140 L900 300 L740 280 Z" fill="#c43c38" opacity="0.3"/>
+        <path d="M480 240 L700 220 L740 380 L500 400 Z" fill="#6e0c14" opacity="0.35"/>
+        <path d="M740 280 L900 300 L900 460 L780 440 Z" fill="#d24a44" opacity="0.28"/>
+        <path d="M500 400 L740 380 L780 520 L520 540 Z" fill="#9a1c24" opacity="0.4"/>
+        <path d="M780 440 L900 460 L900 540 L800 540 Z" fill="#b02830" opacity="0.35"/>
+      </g>
+      <g fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="1.25" stroke-linejoin="round">
+        <path d="M430 20 L600 50 L540 160 L420 140 Z"/>
+        <path d="M620 80 L820 50 L860 200 L680 220 Z"/>
+        <path d="M500 260 L700 240 L740 400 L520 420 Z"/>
+        <path d="M680 300 L860 280 L880 440 L720 460 Z"/>
+      </g>
+    </g>
+
+    <!-- Seam edge highlight -->
+    <path d="M390 0 L520 540" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="2"/>
+
+    <!-- Header: mini logo + company on white -->
+    <g transform="translate(62 58)" fill="none" stroke="#9b1a22" stroke-width="2.8" stroke-linejoin="round">
+      <polygon points="0,-16 14,-8 14,8 0,16 -14,8 -14,-8"/>
+      <polygon points="0,-9 8,-4.5 8,4.5 0,9 -8,4.5 -8,-4.5"/>
+    </g>
+    <text x="92" y="56"
+      font-family="Arial, Helvetica, 'Segoe UI', sans-serif"
+      font-size="16" font-weight="700" fill="#9b1a22" letter-spacing="1.4">COMPANY NAME</text>
+    <text x="92" y="76"
+      font-family="Arial, Helvetica, 'Segoe UI', sans-serif"
+      font-size="9.5" font-weight="500" fill="#9b1a22" letter-spacing="1.1" opacity="0.82">TAGLINE GOES HERE</text>
+
+    <!-- Contact block -->
+    <g font-family="Arial, Helvetica, 'Segoe UI', sans-serif" fill="#9b1a22">
+      <!-- Address -->
+      <circle cx="72" cy="150" r="17" fill="#9b1a22"/>
+      <path d="M72 139.5c-5.2 0-9.4 4.1-9.4 9.2 0 7.2 9.4 15.8 9.4 15.8s9.4-8.6 9.4-15.8c0-5.1-4.2-9.2-9.4-9.2z" fill="#fff"/>
+      <circle cx="72" cy="148.5" r="2.8" fill="#9b1a22"/>
+      <text x="104" y="146" font-size="12.5" font-weight="600" letter-spacing="0.3">YOUR FIRST ADDRESS LINE</text>
+      <text x="104" y="166" font-size="12.5" font-weight="600" letter-spacing="0.3">YOUR SECOND ADDRESS LINE</text>
+
+      <!-- Email -->
+      <circle cx="72" cy="228" r="17" fill="#9b1a22"/>
+      <rect x="62.5" y="221" width="19" height="13.5" rx="1.6" fill="none" stroke="#fff" stroke-width="1.7"/>
+      <path d="M62.5 221 L72 229.5 L81.5 221" fill="none" stroke="#fff" stroke-width="1.7"/>
+      <text x="104" y="233" font-size="12.5" font-weight="600" letter-spacing="0.3">JOHN.SMITH@YOURMAIL.COM</text>
+
+      <!-- Phone -->
+      <circle cx="72" cy="300" r="17" fill="#9b1a22"/>
+      <path d="M65.5 291.5h5.2l2.1 4.2-3.1 3.1c2.1 4.2 6.2 8.3 10.4 10.4l3.1-3.1 4.2 2.1v5.2c-8.3 1-17.7-5.2-22.9-12.5-5.2-7.3-8.3-14.6-7.3-22.9z" fill="#fff"/>
+      <text x="104" y="296" font-size="12.5" font-weight="600" letter-spacing="0.3">+0 123 456 789</text>
+      <text x="104" y="316" font-size="12.5" font-weight="600" letter-spacing="0.3">+0 987 654 321</text>
+
+      <!-- Web -->
+      <circle cx="72" cy="378" r="17" fill="#9b1a22"/>
+      <circle cx="72" cy="378" r="7.8" fill="none" stroke="#fff" stroke-width="1.7"/>
+      <path d="M64.2 378h15.6 M72 370.2v15.6 M66 372.5c4 3.2 8 3.2 12 0 M66 383.5c4-3.2 8-3.2 12 0" fill="none" stroke="#fff" stroke-width="1.45"/>
+      <text x="104" y="383" font-size="12.5" font-weight="600" letter-spacing="0.3">WWW.YOURCOMPANY.COM</text>
+    </g>
+
+    <!-- Name / title on red panel -->
+    <text x="700" y="145" text-anchor="middle"
+      font-family="Arial, Helvetica, 'Segoe UI', sans-serif"
+      font-size="34" font-weight="700" fill="#ffffff" letter-spacing="2.2">ALEXANDER. W</text>
+    <text x="700" y="182" text-anchor="middle"
+      font-family="Arial, Helvetica, 'Segoe UI', sans-serif"
+      font-size="14" font-weight="500" fill="#ffffff" letter-spacing="3.2" opacity="0.93">HEAD OF ENGINEER</text>
+
+    <!-- QR block -->
+    <g transform="translate(628 310)">
+      <rect width="144" height="144" rx="4" fill="#ffffff"/>
+      <!-- finder patterns -->
+      <g fill="#a01c26">
+        <rect x="10" y="10" width="38" height="38"/>
+        <rect x="16" y="16" width="26" height="26" fill="#fff"/>
+        <rect x="22" y="22" width="14" height="14"/>
+
+        <rect x="96" y="10" width="38" height="38"/>
+        <rect x="102" y="16" width="26" height="26" fill="#fff"/>
+        <rect x="108" y="22" width="14" height="14"/>
+
+        <rect x="10" y="96" width="38" height="38"/>
+        <rect x="16" y="102" width="26" height="26" fill="#fff"/>
+        <rect x="22" y="108" width="14" height="14"/>
+      </g>
+      <!-- data modules (stylized, denser) -->
+      <g fill="#a01c26">
+        <rect x="56" y="12" width="7" height="7"/>
+        <rect x="66" y="12" width="7" height="7"/>
+        <rect x="76" y="12" width="7" height="7"/>
+        <rect x="56" y="22" width="7" height="7"/>
+        <rect x="76" y="22" width="7" height="7"/>
+        <rect x="56" y="32" width="7" height="7"/>
+        <rect x="66" y="32" width="7" height="7"/>
+        <rect x="86" y="32" width="7" height="7"/>
+
+        <rect x="12" y="56" width="7" height="7"/>
+        <rect x="22" y="56" width="7" height="7"/>
+        <rect x="32" y="56" width="7" height="7"/>
+        <rect x="42" y="56" width="7" height="7"/>
+        <rect x="56" y="56" width="7" height="7"/>
+        <rect x="76" y="56" width="7" height="7"/>
+        <rect x="96" y="56" width="7" height="7"/>
+        <rect x="116" y="56" width="7" height="7"/>
+        <rect x="126" y="56" width="7" height="7"/>
+
+        <rect x="12" y="66" width="7" height="7"/>
+        <rect x="42" y="66" width="7" height="7"/>
+        <rect x="66" y="66" width="7" height="7"/>
+        <rect x="86" y="66" width="7" height="7"/>
+        <rect x="106" y="66" width="7" height="7"/>
+        <rect x="126" y="66" width="7" height="7"/>
+
+        <rect x="22" y="76" width="7" height="7"/>
+        <rect x="32" y="76" width="7" height="7"/>
+        <rect x="56" y="76" width="7" height="7"/>
+        <rect x="76" y="76" width="7" height="7"/>
+        <rect x="96" y="76" width="7" height="7"/>
+        <rect x="116" y="76" width="7" height="7"/>
+
+        <rect x="12" y="86" width="7" height="7"/>
+        <rect x="32" y="86" width="7" height="7"/>
+        <rect x="66" y="86" width="7" height="7"/>
+        <rect x="86" y="86" width="7" height="7"/>
+        <rect x="106" y="86" width="7" height="7"/>
+        <rect x="126" y="86" width="7" height="7"/>
+
+        <rect x="56" y="96" width="7" height="7"/>
+        <rect x="76" y="96" width="7" height="7"/>
+        <rect x="96" y="96" width="7" height="7"/>
+        <rect x="116" y="96" width="7" height="7"/>
+        <rect x="126" y="96" width="7" height="7"/>
+
+        <rect x="56" y="106" width="7" height="7"/>
+        <rect x="66" y="106" width="7" height="7"/>
+        <rect x="86" y="106" width="7" height="7"/>
+        <rect x="106" y="106" width="7" height="7"/>
+
+        <rect x="56" y="116" width="7" height="7"/>
+        <rect x="76" y="116" width="7" height="7"/>
+        <rect x="96" y="116" width="7" height="7"/>
+        <rect x="116" y="116" width="7" height="7"/>
+        <rect x="126" y="116" width="7" height="7"/>
+
+        <rect x="56" y="126" width="7" height="7"/>
+        <rect x="66" y="126" width="7" height="7"/>
+        <rect x="86" y="126" width="7" height="7"/>
+        <rect x="106" y="126" width="7" height="7"/>
+        <rect x="126" y="126" width="7" height="7"/>
+      </g>
+    </g>
+  </g>
+</svg>

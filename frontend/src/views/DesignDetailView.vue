@@ -17,7 +17,6 @@ import {
   RotateCcw,
   RotateCw,
   Sparkles,
-  Sticker,
   Trash2,
   Type,
   Unlock,
@@ -31,15 +30,20 @@ import {
   apiBaseUrl,
   deleteDesign,
   getDesign,
+  preflightDesign,
   rewriteDesignText,
+  searchIcons8,
   updateDesign,
   uploadImageAsset,
   type AiEditStrength,
   type AiTextRewriteResponse,
   type DesignDetail,
+  type Icons8Icon,
+  type PreflightReport,
 } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
 import { applyTextRewritePreview, canvasLayerId, readLayerText } from "../aiRewritePreview";
+import { appleEmojiIcons } from "../generated/appleEmojiIcons";
 import { localFonts } from "../generated/localFonts";
 
 type CanvasLayer = Record<string, unknown> & {
@@ -69,77 +73,21 @@ type LayerContextMenuState = {
 const layerContextMenuWidth = 176;
 const layerContextMenuHeight = 260;
 const layerContextMenuMargin = 8;
-const iconAssets: IconAsset[] = [
-  {
-    id: "diamond",
-    label: "Diamond",
-    glyph: "\u25C6",
-    tags: ["diamond", "gem", "luxury", "jewel"],
-    description: "Premium diamond mark for jewelry, luxury, salon, and personal branding cards.",
-    keywords: ["kim cuong", "da quy", "sang trong", "trang suc", "\u0431\u0440\u0438\u043B\u043B\u0438\u0430\u043D\u0442", "\u043B\u044E\u043A\u0441"],
-  },
-  {
-    id: "sparkle",
-    label: "Sparkle",
-    glyph: "\u2726",
-    tags: ["sparkle", "shine", "star", "luxury"],
-    description: "Small shine accent for premium, beauty, fashion, and highlight details.",
-    keywords: ["lap lanh", "toa sang", "ngoi sao", "cao cap", "\u0431\u043B\u0435\u0441\u043A", "\u0437\u0432\u0435\u0437\u0434\u0430"],
-  },
-  {
-    id: "star",
-    label: "Star",
-    glyph: "\u2605",
-    tags: ["star", "rating", "premium"],
-    description: "Rating or premium badge icon for review, service, and achievement cards.",
-    keywords: ["danh gia", "hang sao", "uy tin", "premium", "\u0440\u0435\u0439\u0442\u0438\u043D\u0433", "\u0437\u0432\u0435\u0437\u0434\u0430"],
-  },
-  {
-    id: "heart",
-    label: "Heart",
-    glyph: "\u2665",
-    tags: ["heart", "love", "beauty", "spa"],
-    description: "Soft wellness and beauty icon for spa, clinic, handmade, and personal care cards.",
-    keywords: ["trai tim", "tinh yeu", "spa", "lam dep", "\u0441\u0435\u0440\u0434\u0446\u0435", "\u043B\u044E\u0431\u043E\u0432\u044C"],
-  },
-  {
-    id: "phone",
-    label: "Phone",
-    glyph: "\u260E",
-    tags: ["phone", "call", "contact", "dien thoai"],
-    description: "Contact phone mark for hotline, booking, support, and direct call details.",
-    keywords: ["so dien thoai", "goi dien", "lien he", "hotline", "\u0442\u0435\u043B\u0435\u0444\u043E\u043D", "\u0437\u0432\u043E\u043D\u043E\u043A"],
-  },
-  {
-    id: "mail",
-    label: "Mail",
-    glyph: "\u2709",
-    tags: ["mail", "email", "contact"],
-    description: "Email contact icon for business, support, sales, and portfolio cards.",
-    keywords: ["thu", "email", "lien he", "hop thu", "\u043F\u043E\u0447\u0442\u0430", "\u044D\u043B\u0435\u043A\u0442\u0440\u043E\u043D\u043D\u0430\u044F \u043F\u043E\u0447\u0442\u0430"],
-  },
-  {
-    id: "check",
-    label: "Check",
-    glyph: "\u2713",
-    tags: ["check", "verified", "done"],
-    description: "Verified check mark for certified service, completion, and trust badges.",
-    keywords: ["xac minh", "hoan tat", "uy tin", "dung", "\u0433\u0430\u043B\u043E\u0447\u043A\u0430", "\u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E"],
-  },
-  {
-    id: "flower",
-    label: "Flower",
-    glyph: "\u273F",
-    tags: ["flower", "spa", "beauty", "organic"],
-    description: "Floral organic accent for spa, florist, wellness, cosmetic, and handmade cards.",
-    keywords: ["hoa", "huu co", "my pham", "spa vang", "\u0446\u0432\u0435\u0442\u043E\u043A", "\u0441\u043F\u0430", "\u043A\u0440\u0430\u0441\u043E\u0442\u0430"],
-  },
-];
+const iconAssets: IconAsset[] = appleEmojiIcons;
 type AiRewritePreviewState = {
   response: AiTextRewriteResponse;
   layerId: string;
   originalText: string;
   replacementText: string;
+};
+type AssetLibraryItem = {
+  id: string;
+  file: File;
+  url: string;
+  name: string;
+  sizeLabel: string;
+  pixelWidth: number;
+  pixelHeight: number;
 };
 
 
@@ -168,21 +116,43 @@ const editorZoom = ref(100);
 const editorPanX = ref(0);
 const editorPanY = ref(0);
 const assetFileInput = ref<HTMLInputElement | null>(null);
-const assetPreviewUrl = ref("");
-const assetPreviewName = ref("");
-const assetPreviewSize = ref("");
+const assetLibrary = ref<AssetLibraryItem[]>([]);
+const selectedAssetId = ref<string | null>(null);
 const assetPreviewError = ref("");
-const assetPreviewFile = ref<File | null>(null);
-const assetPreviewPixelWidth = ref(0);
-const assetPreviewPixelHeight = ref(0);
 const assetUploading = ref(false);
+const assetDropActive = ref(false);
+const layerClipboard = ref<CanvasLayer[]>([]);
 const iconSearchQuery = ref("");
 const selectedIconId = ref(iconAssets[0]?.id ?? "diamond");
+const draggedIconId = ref<string | null>(null);
+const icons8SearchQuery = ref("");
+const icons8SearchLanguage = ref("en");
+const icons8Results = ref<Icons8Icon[]>([]);
+const icons8Loading = ref(false);
+const icons8Error = ref("");
+const icons8Message = ref("");
+const draggedIcons8Id = ref<string | null>(null);
+const randomPhotoLoading = ref(false);
+const randomPhotoError = ref("");
 const aiRewritePrompt = ref("");
 const aiRewriteStrength = ref<AiEditStrength>("light");
 const aiRewriteLoading = ref(false);
 const aiRewriteError = ref("");
 const aiRewritePreview = ref<AiRewritePreviewState | null>(null);
+const showSafeZoneGuides = ref(true);
+const preflightReport = ref<PreflightReport | null>(null);
+const preflightLoading = ref(false);
+const preflightError = ref("");
+const LEFT_SIDEBAR_MIN = 180;
+const LEFT_SIDEBAR_MAX = 420;
+const LEFT_SIDEBAR_DEFAULT = 240;
+const RIGHT_SIDEBAR_MIN = 220;
+const RIGHT_SIDEBAR_MAX = 480;
+const RIGHT_SIDEBAR_DEFAULT = 300;
+const SIDEBAR_STORAGE_KEY = "vizi.editor.sidebarWidths";
+const leftSidebarWidth = ref(LEFT_SIDEBAR_DEFAULT);
+const rightSidebarWidth = ref(RIGHT_SIDEBAR_DEFAULT);
+const resizingSidebar = ref<"left" | "right" | null>(null);
 const aiRewriteStrengths: Array<{ id: AiEditStrength; label: string }> = [
   { id: "light", label: "Light" },
   { id: "balanced", label: "Balanced" },
@@ -200,13 +170,23 @@ const editorTools: { id: EditorTool; label: string; icon: typeof MousePointer2 }
   { id: "rect", label: "Rect", icon: Square },
   { id: "ellipse", label: "Ellipse", icon: Circle },
   { id: "image", label: "Image", icon: ImageIcon },
-  { id: "icon", label: "Icon", icon: Sticker },
 ];
 const colorTargets: { id: ColorTarget; label: string }[] = [
   { id: "fill", label: "Fill" },
   { id: "stroke", label: "Stroke" },
 ];
 const recentColors = ["#B1B2B5", "#2F281C", "#A87F33", "#5F7344", "#A5382F", "#FFFFFF"];
+const icons8LanguageOptions = [
+  { id: "en", label: "English" },
+  { id: "ru", label: "Russian" },
+  { id: "vi", label: "Vietnamese" },
+  { id: "es", label: "Spanish" },
+  { id: "fr", label: "French" },
+  { id: "de", label: "German" },
+  { id: "ja", label: "Japanese" },
+  { id: "zh", label: "Chinese" },
+];
+const icons8DefaultPlatform = "ios7";
 const allowedPreviewImageTypes = ["image/png", "image/jpeg", "image/webp"];
 const maximumPreviewImageBytes = 5 * 1024 * 1024;
 const systemFontFamilyOptions = [
@@ -232,13 +212,18 @@ const selectedPageLabel = computed(() =>
   editorPages.find((page) => page.id === selectedPage.value)?.label ?? "Front",
 );
 const activeToolLabel = computed(() =>
-  editorTools.find((tool) => tool.id === activeTool.value)?.label ?? "Select",
+  activeTool.value === "icon"
+    ? "Icon"
+    : editorTools.find((tool) => tool.id === activeTool.value)?.label ?? "Select",
 );
 const activeColorTargetLabel = computed(() =>
   colorTargets.find((target) => target.id === activeColorTarget.value)?.label ?? "Fill",
 );
 const selectedIconAsset = computed(() =>
   iconAssets.find((icon) => icon.id === selectedIconId.value) ?? iconAssets[0],
+);
+const selectedAsset = computed(() =>
+  assetLibrary.value.find((asset) => asset.id === selectedAssetId.value) ?? null,
 );
 function normalizeIconSearchText(value: string): string {
   return value
@@ -267,61 +252,92 @@ const filteredIconAssets = computed(() => {
   if (terms.length === 0) {
     return iconAssets;
   }
-  return iconAssets.filter((icon) => {
-    const haystack = iconSearchHaystack(icon);
-    return terms.every((term) => haystack.includes(term));
-  });
+  return iconAssets
+    .map((icon) => {
+      const haystack = iconSearchHaystack(icon);
+      const matchCount = terms.filter((term) => haystack.includes(term)).length;
+      return { icon, matchCount };
+    })
+    .filter((entry) => entry.matchCount > 0)
+    .sort((left, right) => right.matchCount - left.matchCount || left.icon.label.localeCompare(right.icon.label))
+    .map((entry) => entry.icon);
 });
+const pageLayerEntries = computed(() =>
+  editableLayers.value
+    .map((layer, index) => ({ layer, index }))
+    .filter((entry) => layerPage(entry.layer) === selectedPage.value),
+);
 const editorCanvasLayers = computed<CanvasLayer[]>(() =>
-  selectedPage.value === "front" ? canvasLayers.value : [],
+  pageLayerEntries.value.map((entry) => entry.layer),
 );
 const displayedCanvasLayers = computed<CanvasLayer[]>(() =>
   isEditorRoute.value ? editorCanvasLayers.value : canvasLayers.value,
 );
-const layerPanelItems = computed<LayerPanelItem[]>(() =>
-  displayedCanvasLayers.value
-    .map((layer, index) => ({ layer, index, number: displayedCanvasLayers.value.length - index }))
-    .reverse(),
-);
+const layerPanelItems = computed<LayerPanelItem[]>(() => {
+  const entries = isEditorRoute.value
+    ? pageLayerEntries.value
+    : editableLayers.value.map((layer, index) => ({ layer, index }));
+  return entries
+    .map((entry, order) => ({
+      layer: entry.layer,
+      index: entry.index,
+      number: order + 1,
+    }))
+    .reverse();
+});
 const canvasLayerCount = computed(() => displayedCanvasLayers.value.length);
 const selectedLayer = computed<CanvasLayer | null>(
   () => selectedLayerIndexes.value.length > 0
-    ? displayedCanvasLayers.value[selectedLayerIndex.value] ?? null
+    ? editableLayers.value[selectedLayerIndex.value] ?? null
     : null,
 );
-const resizableLayerIndex = computed<number | null>(() => {
-  const layer = selectedLayer.value;
-  return selectedPage.value === "front"
-    && selectedLayerIndexes.value.length === 1
-    && layer
-    && layerIsVisible(layer)
-    && !layerIsLocked(layer)
-    ? selectedLayerIndex.value
-    : null;
+const canvasSelectedLayerIndexes = computed(() => {
+  if (!isEditorRoute.value) {
+    return selectedLayerIndexes.value;
+  }
+  const local: number[] = [];
+  pageLayerEntries.value.forEach((entry, localIndex) => {
+    if (selectedLayerIndexes.value.includes(entry.index)) {
+      local.push(localIndex);
+    }
+  });
+  return local;
 });
-const rotatableLayerIndex = computed<number | null>(() => {
-  const layer = selectedLayer.value;
-  return selectedPage.value === "front"
-    && selectedLayerIndexes.value.length === 1
-    && layer
-    && layerIsVisible(layer)
-    && !layerIsLocked(layer)
-    ? selectedLayerIndex.value
-    : null;
+const canvasSelectedLayerIndex = computed(() => {
+  if (!isEditorRoute.value) {
+    return selectedLayerIndex.value;
+  }
+  const local = pageLayerEntries.value.findIndex((entry) => entry.index === selectedLayerIndex.value);
+  return local >= 0 ? local : null;
 });
+const canvasResizableLayerIndex = computed<number | null>(() => {
+  const layer = selectedLayer.value;
+  if (
+    !isEditorRoute.value
+    || selectedLayerIndexes.value.length !== 1
+    || !layer
+    || !layerIsVisible(layer)
+    || layerIsLocked(layer)
+  ) {
+    return null;
+  }
+  return canvasSelectedLayerIndex.value;
+});
+const canvasRotatableLayerIndex = computed<number | null>(() => canvasResizableLayerIndex.value);
 const selectedLayerCanEditGeometry = computed(() => {
   const layer = selectedLayer.value;
-  if (!layer) {
+  if (!layer || selectedLayerIndexes.value.length !== 1) {
     return false;
   }
-  return selectedPage.value === "front"
-    && selectedLayerIndexes.value.length === 1
-    && !layerIsLocked(layer);
+  return !layerIsLocked(layer) && layerPage(layer) === selectedPage.value;
 });
 const selectedLayerCanEditText = computed(() => {
   const layer = selectedLayer.value;
   return selectedLayerCanEditGeometry.value && layer?.type === "text";
 });
+const selectedLayerIsImage = computed(() =>
+  selectedLayerIndexes.value.length === 1 && selectedLayer.value?.type === "image",
+);
 const canRequestAiRewrite = computed(() =>
   Boolean(design.value && selectedLayerCanEditText.value && aiRewritePrompt.value.trim()),
 );
@@ -329,14 +345,13 @@ const canRequestAiRewrite = computed(() =>
 const selectedLayerCanEditAppearance = computed(() => selectedLayerCanEditGeometry.value);
 const canUndoLayerChange = computed(() => undoLayerStack.value.length > 0);
 const canRedoLayerChange = computed(() => redoLayerStack.value.length > 0);
-const canDuplicateSelectedLayers = computed(() =>
-  selectedPage.value === "front" && selectedLayerIndexes.value.length > 0,
-);
-const canDeleteSelectedLayers = computed(() =>
-  selectedPage.value === "front" && selectedLayerIndexes.value.length > 0,
-);
+const canDuplicateSelectedLayers = computed(() => selectedLayerIndexes.value.length > 0);
+const canDeleteSelectedLayers = computed(() => selectedLayerIndexes.value.length > 0);
 const editorCanvasTransform = computed(() => ({
   transform: `translate(${editorPanX.value}px, ${editorPanY.value}px) scale(${editorZoom.value / 100})`,
+}));
+const editorShellStyle = computed(() => ({
+  gridTemplateColumns: `${leftSidebarWidth.value}px 6px minmax(0, 1fr) 6px ${rightSidebarWidth.value}px`,
 }));
 const layerContextMenuStyle = computed(() => ({
   left: `${layerContextMenu.value?.x ?? 0}px`,
@@ -360,21 +375,31 @@ const activeColorValue = computed(() => {
   return optionalString(layer.type === "text" ? layer.color : layer.fill ?? layer.background) ?? "";
 });
 const firstTextLayerIndex = computed(() =>
-  displayedCanvasLayers.value.findIndex((layer) => layer.type === "text"),
+  editableLayers.value.findIndex((layer) => layer.type === "text"),
 );
-const firstTextLayerLocked = computed(() => {
-  const layer = editableLayers.value[firstTextLayerIndex.value];
+const editableTextLayerIndex = computed(() => {
+  if (isEditorRoute.value) {
+    const selected = selectedLayer.value;
+    if (selected?.type === "text" && selectedLayerIndexes.value.length === 1) {
+      return selectedLayerIndex.value;
+    }
+    return -1;
+  }
+  return firstTextLayerIndex.value;
+});
+const editableTextLayerLocked = computed(() => {
+  const layer = editableLayers.value[editableTextLayerIndex.value];
   return layer ? layerIsLocked(layer) : false;
 });
-const firstTextLayerText = computed({
+const editableTextLayerText = computed({
   get: () => {
-    const layer = editableLayers.value[firstTextLayerIndex.value];
+    const layer = editableLayers.value[editableTextLayerIndex.value];
     return layer ? optionalString(layer.text ?? layer.value) ?? "" : "";
   },
   set: (value: string) => {
-    const index = firstTextLayerIndex.value;
+    const index = editableTextLayerIndex.value;
     const layer = editableLayers.value[index];
-    if (!layer) {
+    if (!layer || layer.type !== "text") {
       return;
     }
 
@@ -383,11 +408,139 @@ const firstTextLayerText = computed({
       : "value";
     const layers = [...editableLayers.value];
     layers[index] = { ...layer, [textField]: value };
-    commitLayers(layers);
+    commitLayers(layers, [index]);
   },
 });
 function isCanvasLayer(layer: unknown): layer is CanvasLayer {
   return typeof layer === "object" && layer !== null;
+}
+
+function layerPage(layer: CanvasLayer): EditorPage {
+  return layer.page === "back" ? "back" : "front";
+}
+
+function localCanvasIndexToGlobal(localIndex: number): number {
+  return pageLayerEntries.value[localIndex]?.index ?? localIndex;
+}
+
+function setSelectedPage(page: EditorPage): void {
+  if (selectedPage.value === page) {
+    return;
+  }
+  selectedPage.value = page;
+  clearLayerSelection();
+  closeLayerContextMenu();
+}
+
+function clampSidebarWidth(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function loadSidebarWidths(): void {
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw) as { left?: unknown; right?: unknown };
+    if (typeof parsed.left === "number" && Number.isFinite(parsed.left)) {
+      leftSidebarWidth.value = clampSidebarWidth(parsed.left, LEFT_SIDEBAR_MIN, LEFT_SIDEBAR_MAX);
+    }
+    if (typeof parsed.right === "number" && Number.isFinite(parsed.right)) {
+      rightSidebarWidth.value = clampSidebarWidth(parsed.right, RIGHT_SIDEBAR_MIN, RIGHT_SIDEBAR_MAX);
+    }
+  } catch {
+    // Ignore corrupt localStorage payloads.
+  }
+}
+
+function persistSidebarWidths(): void {
+  try {
+    window.localStorage.setItem(
+      SIDEBAR_STORAGE_KEY,
+      JSON.stringify({
+        left: leftSidebarWidth.value,
+        right: rightSidebarWidth.value,
+      }),
+    );
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}
+
+function isCompactEditorLayout(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
+}
+
+function startSidebarResize(side: "left" | "right", event: PointerEvent): void {
+  if (isCompactEditorLayout()) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  resizingSidebar.value = side;
+  const startX = event.clientX;
+  const startLeft = leftSidebarWidth.value;
+  const startRight = rightSidebarWidth.value;
+
+  const move = (moveEvent: PointerEvent) => {
+    const delta = moveEvent.clientX - startX;
+    if (side === "left") {
+      leftSidebarWidth.value = clampSidebarWidth(
+        startLeft + delta,
+        LEFT_SIDEBAR_MIN,
+        LEFT_SIDEBAR_MAX,
+      );
+    } else {
+      rightSidebarWidth.value = clampSidebarWidth(
+        startRight - delta,
+        RIGHT_SIDEBAR_MIN,
+        RIGHT_SIDEBAR_MAX,
+      );
+    }
+  };
+  const stop = () => {
+    resizingSidebar.value = null;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    persistSidebarWidths();
+  };
+
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
+function handleSidebarResizeKey(side: "left" | "right", event: KeyboardEvent): void {
+  if (isCompactEditorLayout()) {
+    return;
+  }
+  const step = event.shiftKey ? 24 : 12;
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+    return;
+  }
+  event.preventDefault();
+  const direction = event.key === "ArrowRight" ? 1 : -1;
+  if (side === "left") {
+    leftSidebarWidth.value = clampSidebarWidth(
+      leftSidebarWidth.value + direction * step,
+      LEFT_SIDEBAR_MIN,
+      LEFT_SIDEBAR_MAX,
+    );
+  } else {
+    // ArrowRight widens the right panel (handle moves left visually).
+    rightSidebarWidth.value = clampSidebarWidth(
+      rightSidebarWidth.value - direction * step,
+      RIGHT_SIDEBAR_MIN,
+      RIGHT_SIDEBAR_MAX,
+    );
+  }
+  persistSidebarWidths();
 }
 
 function optionalString(value: unknown): string | null {
@@ -401,7 +554,8 @@ function layerDisplayName(layer: CanvasLayer): string {
 }
 
 function layerPanelNumber(index: number): number {
-  return Math.max(1, displayedCanvasLayers.value.length - index);
+  const item = layerPanelItems.value.find((entry) => entry.index === index);
+  return item?.number ?? index + 1;
 }
 
 function layerIsVisible(layer: CanvasLayer): boolean {
@@ -415,7 +569,14 @@ function layerIsLocked(layer: CanvasLayer): boolean {
 function parseCanvasLayers(canvasJson: string): CanvasLayer[] {
   try {
     const canvas = JSON.parse(canvasJson) as { layers?: unknown };
-    return Array.isArray(canvas.layers) ? canvas.layers.filter(isCanvasLayer) : [];
+    return Array.isArray(canvas.layers)
+      ? canvas.layers
+        .filter(isCanvasLayer)
+        .map((layer) => ({
+          ...layer,
+          page: layer.page === "back" ? "back" : "front",
+        }))
+      : [];
   } catch {
     return [];
   }
@@ -498,12 +659,17 @@ function redoLayerChange(): void {
 }
 
 function updateEditorZoom(delta: number): void {
-  editorZoom.value = clamp(editorZoom.value + delta, 50, 200);
+  editorZoom.value = clamp(Math.round(editorZoom.value + delta), 50, 200);
+}
+
+function setEditorZoom(nextZoom: number): void {
+  editorZoom.value = clamp(Math.round(nextZoom), 50, 200);
 }
 
 function updateEditorPan(deltaX: number, deltaY: number): void {
-  editorPanX.value = clamp(editorPanX.value + deltaX, -360, 360);
-  editorPanY.value = clamp(editorPanY.value + deltaY, -240, 240);
+  const panLimit = Math.round(360 * (editorZoom.value / 100));
+  editorPanX.value = clamp(editorPanX.value + deltaX, -panLimit, panLimit);
+  editorPanY.value = clamp(editorPanY.value + deltaY, -panLimit, panLimit);
 }
 
 function resetEditorView(): void {
@@ -512,16 +678,35 @@ function resetEditorView(): void {
   editorPanY.value = 0;
 }
 
-function revokeAssetPreview(): void {
-  if (assetPreviewUrl.value) {
-    URL.revokeObjectURL(assetPreviewUrl.value);
+/**
+ * Touchpad gestures on the canvas workspace:
+ * - Pinch zoom (browser exposes as wheel + ctrlKey)
+ * - Ctrl/Cmd + two-finger scroll = zoom
+ * - Two-finger scroll = pan
+ */
+function handleEditorWheel(event: WheelEvent): void {
+  if (!isEditorRoute.value) {
+    return;
   }
-  assetPreviewUrl.value = "";
-  assetPreviewName.value = "";
-  assetPreviewSize.value = "";
-  assetPreviewFile.value = null;
-  assetPreviewPixelWidth.value = 0;
-  assetPreviewPixelHeight.value = 0;
+  // Don't steal scroll from nested scrollable panels if the wheel started there.
+  const target = event.target;
+  if (target instanceof HTMLElement && target.closest(".editor-sidebar, .editor-toolbar, .editor-zoom-controls")) {
+    return;
+  }
+
+  event.preventDefault();
+  const zoomGesture = event.ctrlKey || event.metaKey;
+  if (zoomGesture) {
+    // Pinch / Ctrl+scroll: smooth scale. Clamp per-event so large trackpad
+    // deltas do not jump from 100% to 200% in one tick.
+    const rawFactor = Math.exp(-event.deltaY * 0.004);
+    const zoomFactor = clamp(rawFactor, 0.92, 1.08);
+    setEditorZoom(editorZoom.value * zoomFactor);
+    return;
+  }
+
+  // Two-finger scroll pans the canvas (natural direction).
+  updateEditorPan(-event.deltaX, -event.deltaY);
 }
 
 function formatBytes(bytes: number): string {
@@ -530,73 +715,170 @@ function formatBytes(bytes: number): string {
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-function previewAssetImage(event: Event): void {
+function createAssetId(): string {
+  return `asset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function revokeAllAssetLibrary(): void {
+  for (const asset of assetLibrary.value) {
+    URL.revokeObjectURL(asset.url);
+  }
+  assetLibrary.value = [];
+  selectedAssetId.value = null;
+}
+
+function removeAssetFromLibrary(assetId: string): void {
+  const asset = assetLibrary.value.find((item) => item.id === assetId);
+  if (!asset) {
+    return;
+  }
+  URL.revokeObjectURL(asset.url);
+  assetLibrary.value = assetLibrary.value.filter((item) => item.id !== assetId);
+  if (selectedAssetId.value === assetId) {
+    selectedAssetId.value = assetLibrary.value[0]?.id ?? null;
+  }
+}
+
+function readImageDimensions(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error("Cannot read image dimensions"));
+    image.src = url;
+  });
+}
+
+async function ingestImageFiles(fileList: FileList | File[]): Promise<AssetLibraryItem[]> {
+  const files = Array.from(fileList);
+  if (files.length === 0) {
+    return [];
+  }
+
+  assetPreviewError.value = "";
+  const accepted: AssetLibraryItem[] = [];
+  for (const file of files) {
+    if (!allowedPreviewImageTypes.includes(file.type)) {
+      assetPreviewError.value = "Only PNG, JPG, or WebP images are supported.";
+      continue;
+    }
+    if (file.size > maximumPreviewImageBytes) {
+      assetPreviewError.value = "Each image must be 5 MB or smaller.";
+      continue;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const dimensions = await readImageDimensions(url);
+      accepted.push({
+        id: createAssetId(),
+        file,
+        url,
+        name: file.name,
+        sizeLabel: formatBytes(file.size),
+        pixelWidth: dimensions.width,
+        pixelHeight: dimensions.height,
+      });
+    } catch {
+      URL.revokeObjectURL(url);
+      assetPreviewError.value = "Cannot read one of the selected images.";
+    }
+  }
+
+  if (accepted.length === 0) {
+    return [];
+  }
+
+  assetLibrary.value = [...assetLibrary.value, ...accepted];
+  selectedAssetId.value = accepted[accepted.length - 1]!.id;
+  return accepted;
+}
+
+async function previewAssetImage(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  assetPreviewError.value = "";
-  revokeAssetPreview();
-  if (!file) {
+  if (!input.files?.length) {
     return;
   }
-
-  if (!allowedPreviewImageTypes.includes(file.type)) {
-    assetPreviewError.value = "Only PNG, JPG, or WebP images can be previewed.";
-    input.value = "";
-    return;
-  }
-  if (file.size > maximumPreviewImageBytes) {
-    assetPreviewError.value = "Image must be 5 MB or smaller.";
-    input.value = "";
-    return;
-  }
-
-  assetPreviewUrl.value = URL.createObjectURL(file);
-  assetPreviewName.value = file.name;
-  assetPreviewSize.value = formatBytes(file.size);
-  assetPreviewFile.value = file;
-}
-
-function clearAssetPreview(): void {
-  revokeAssetPreview();
-  assetPreviewError.value = "";
-}
-
-function captureAssetDimensions(event: Event): void {
-  const image = event.target as HTMLImageElement;
-  assetPreviewPixelWidth.value = image.naturalWidth;
-  assetPreviewPixelHeight.value = image.naturalHeight;
+  await ingestImageFiles(input.files);
+  input.value = "";
 }
 
 function backendAssetUrl(url: string): string {
   return url.startsWith("/") ? `${apiBaseUrl}${url}` : url;
 }
 
-async function addPreviewAssetToCanvas(x = 12, y = 12): Promise<void> {
-  if (!assetPreviewFile.value || assetUploading.value || selectedPage.value !== "front") {
+function returnToSelectTool(): void {
+  activeTool.value = "select";
+}
+
+/** Public portrait pool for demo cards (no API key). */
+function randomPortraitUrl(): string {
+  const gender = Math.random() > 0.45 ? "men" : "women";
+  const index = 1 + Math.floor(Math.random() * 99);
+  // Cache-bust so the browser reloads when re-rolling the same index.
+  return `https://randomuser.me/api/portraits/${gender}/${index}.jpg?v=${Date.now()}`;
+}
+
+function applyRandomPhotoToSelectedImage(): void {
+  if (!selectedLayerIsImage.value || !selectedLayer.value) {
+    return;
+  }
+  randomPhotoError.value = "";
+  randomPhotoLoading.value = true;
+  try {
+    const url = randomPortraitUrl();
+    const layers = [...editableLayers.value];
+    const index = selectedLayerIndex.value;
+    const layer = layers[index];
+    if (!layer || layer.type !== "image") {
+      return;
+    }
+    layers[index] = {
+      ...layer,
+      src: url,
+      name: layer.name === "Portrait" || !optionalString(layer.name)
+        ? "Portrait (random)"
+        : layer.name,
+      // Clear uploaded-asset binding so external URL is used.
+      assetId: undefined,
+      storageKey: undefined,
+    };
+    commitLayers(layers, [index]);
+  } catch (unknownError) {
+    randomPhotoError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot load random photo";
+  } finally {
+    randomPhotoLoading.value = false;
+  }
+}
+
+async function addAssetToCanvas(asset: AssetLibraryItem, x = 12, y = 12): Promise<void> {
+  if (assetUploading.value) {
     return;
   }
 
   assetUploading.value = true;
   assetPreviewError.value = "";
   try {
-    const uploaded = await uploadImageAsset(assetPreviewFile.value);
+    const uploaded = await uploadImageAsset(asset.file);
     const layer: CanvasLayer = {
       type: "image",
-      name: assetPreviewName.value || uploaded.fileName,
+      name: asset.name || uploaded.fileName,
       src: backendAssetUrl(uploaded.url),
       assetId: uploaded.assetId,
       storageKey: uploaded.storageKey,
+      page: selectedPage.value,
       x,
       y,
       width: 32,
       height: 32,
       opacity: 1,
-      pixelWidth: assetPreviewPixelWidth.value,
-      pixelHeight: assetPreviewPixelHeight.value,
+      pixelWidth: asset.pixelWidth,
+      pixelHeight: asset.pixelHeight,
     };
     const layers = [...editableLayers.value, layer];
     commitLayers(layers, [layers.length - 1]);
-    activeTool.value = "image";
+    selectedAssetId.value = asset.id;
+    returnToSelectTool();
   } catch (unknownError) {
     assetPreviewError.value = unknownError instanceof Error ? unknownError.message : "Cannot upload image";
   } finally {
@@ -604,25 +886,143 @@ async function addPreviewAssetToCanvas(x = 12, y = 12): Promise<void> {
   }
 }
 
-function layerPlacementFromPointer(event: PointerEvent, width: number, height: number): { x: number; y: number } {
-  const frame = (event.target as HTMLElement | null)?.closest<HTMLElement>(".canvas-frame");
+async function addPreviewAssetToCanvas(x = 12, y = 12): Promise<void> {
+  const asset = selectedAsset.value;
+  if (!asset) {
+    assetPreviewError.value = "Choose or drop an image in Assets first.";
+    return;
+  }
+  await addAssetToCanvas(asset, x, y);
+}
+
+const iconDragDataType = "application/x-vizi-icon-id";
+
+function dragEventHasType(event: DragEvent, type: string): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes(type);
+}
+
+function iconAssetById(iconId: string | null): IconAsset | null {
+  return iconAssets.find((icon) => icon.id === iconId) ?? null;
+}
+
+function draggedIconAsset(event?: DragEvent): IconAsset | null {
+  const iconId = event?.dataTransfer?.getData(iconDragDataType) || draggedIconId.value;
+  return iconAssetById(iconId);
+}
+
+const icons8DragDataType = "application/x-vizi-icons8-id";
+
+function icons8IconById(iconId: string | null): Icons8Icon | null {
+  return icons8Results.value.find((icon) => icon.id === iconId) ?? null;
+}
+
+function draggedIcons8Icon(event?: DragEvent): Icons8Icon | null {
+  const iconId = event?.dataTransfer?.getData(icons8DragDataType) || draggedIcons8Id.value;
+  return icons8IconById(iconId);
+}
+
+function onAssetDragOver(event: DragEvent): void {
+  const hasFiles = dragEventHasType(event, "Files");
+  const hasIcon = dragEventHasType(event, iconDragDataType) || dragEventHasType(event, icons8DragDataType) || draggedIconId.value !== null || draggedIcons8Id.value !== null;
+  if (!hasFiles && !hasIcon) {
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
+  assetDropActive.value = true;
+}
+
+function onAssetDragLeave(event: DragEvent): void {
+  const related = event.relatedTarget as Node | null;
+  if (related && (event.currentTarget as HTMLElement).contains(related)) {
+    return;
+  }
+  assetDropActive.value = false;
+}
+
+async function onAssetDrop(event: DragEvent): Promise<void> {
+  event.preventDefault();
+  assetDropActive.value = false;
+  if (draggedIconAsset(event) || draggedIcons8Icon(event)) {
+    draggedIconId.value = null;
+    draggedIcons8Id.value = null;
+    return;
+  }
+  const files = event.dataTransfer?.files;
+  if (!files?.length) {
+    return;
+  }
+  await ingestImageFiles(files);
+}
+
+async function onWorkspaceDrop(event: DragEvent): Promise<void> {
+  event.preventDefault();
+  assetDropActive.value = false;
+  const droppedIcon = draggedIconAsset(event);
+  if (droppedIcon) {
+    const position = layerPlacementFromClientPoint(event.target, event.clientX, event.clientY, 10, 10);
+    const layer = createIconLayer(droppedIcon, position.x, position.y);
+    const layers = [...editableLayers.value, layer];
+    commitLayers(layers, [layers.length - 1]);
+    draggedIconId.value = null;
+    returnToSelectTool();
+    return;
+  }
+  const droppedIcons8 = draggedIcons8Icon(event);
+  if (droppedIcons8) {
+    const position = layerPlacementFromClientPoint(event.target, event.clientX, event.clientY, 10, 10);
+    addIcons8IconToCanvas(droppedIcons8, position.x, position.y);
+    draggedIcons8Id.value = null;
+    returnToSelectTool();
+    return;
+  }
+  const files = event.dataTransfer?.files;
+  if (!files?.length) {
+    return;
+  }
+  const accepted = await ingestImageFiles(files);
+  if (accepted.length === 0) {
+    return;
+  }
+  const position = layerPlacementFromClientPoint(event.target, event.clientX, event.clientY, 32, 32);
+  // Place each dropped image with a small offset cascade.
+  for (let index = 0; index < accepted.length; index += 1) {
+    const asset = accepted[index]!;
+    await addAssetToCanvas(
+      asset,
+      clamp(position.x + index * 4, 0, 68),
+      clamp(position.y + index * 4, 0, 68),
+    );
+  }
+}
+
+function layerPlacementFromClientPoint(
+  target: EventTarget | null,
+  clientX: number,
+  clientY: number,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const frame = (target as HTMLElement | null)?.closest<HTMLElement>(".canvas-frame");
   if (!frame) {
     return { x: 50 - width / 2, y: 50 - height / 2 };
   }
   const rect = frame.getBoundingClientRect();
-  const x = ((event.clientX - rect.left) / rect.width) * 100 - width / 2;
-  const y = ((event.clientY - rect.top) / rect.height) * 100 - height / 2;
+  const x = ((clientX - rect.left) / rect.width) * 100 - width / 2;
+  const y = ((clientY - rect.top) / rect.height) * 100 - height / 2;
   return {
-    x: Math.round(clamp(x, 0, 100 - width) * 100) / 100,
-    y: Math.round(clamp(y, 0, 100 - height) * 100) / 100,
+    x: roundGeometry(clamp(x, 0, 100 - width)),
+    y: roundGeometry(clamp(y, 0, 100 - height)),
   };
 }
 
+function layerPlacementFromPointer(event: PointerEvent, width: number, height: number): { x: number; y: number } {
+  return layerPlacementFromClientPoint(event.target, event.clientX, event.clientY, width, height);
+}
+
 async function handleCanvasPointerDown(event: PointerEvent): Promise<void> {
-  if (selectedPage.value !== "front") {
-    clearLayerSelection();
-    return;
-  }
   if (activeTool.value === "select") {
     clearLayerSelection();
     return;
@@ -633,8 +1033,9 @@ async function handleCanvasPointerDown(event: PointerEvent): Promise<void> {
 
   if (activeTool.value === "image") {
     const { x, y } = layerPlacementFromPointer(event, 28, 28);
-    if (!assetPreviewFile.value) {
-      assetPreviewError.value = "Choose an image in Assets before placing it.";
+    if (!selectedAsset.value) {
+      assetPreviewError.value = "Choose or drop an image in Assets before placing it.";
+      assetFileInput.value?.click();
       return;
     }
     await addPreviewAssetToCanvas(x, y);
@@ -647,22 +1048,94 @@ async function handleCanvasPointerDown(event: PointerEvent): Promise<void> {
   }
   const layers = [...editableLayers.value, layer];
   commitLayers(layers, [layers.length - 1]);
+  returnToSelectTool();
 }
 
+function createIconLayer(icon: IconAsset, x: number, y: number): CanvasLayer {
+  return {
+    type: "icon",
+    name: icon.label,
+    text: icon.glyph,
+    iconId: icon.id,
+    page: selectedPage.value,
+    x,
+    y,
+    width: 10,
+    height: 10,
+    fill: "#0B4F9C",
+    color: "#0B4F9C",
+    fontFamily: "\"Apple Color Emoji\", \"Segoe UI Emoji\", \"Noto Color Emoji\", \"Segoe UI Symbol\", sans-serif",
+    fontSize: 28,
+    fontWeight: 600,
+    opacity: 1,
+  };
+}
+
+function createIcons8IconLayer(icon: Icons8Icon, x: number, y: number): CanvasLayer {
+  return {
+    type: "image",
+    name: icon.name,
+    src: icon.previewUrl,
+    page: selectedPage.value,
+    x,
+    y,
+    width: 10,
+    height: 10,
+    fill: "transparent",
+    stroke: "transparent",
+    strokeWidth: 0,
+    radius: 0,
+    opacity: 1,
+    assetProvider: "icons8",
+    sourceUrl: icon.sourceUrl,
+    creditText: "Icons by Icons8",
+    creditUrl: "https://icons8.com",
+  };
+}
+
+function addIcons8IconToCanvas(icon: Icons8Icon, x = 12, y = 12): void {
+  const layer = createIcons8IconLayer(icon, x, y);
+  const layers = [...editableLayers.value, layer];
+  commitLayers(layers, [layers.length - 1]);
+  saveMessage.value = "Icons8 icon added. Keep the Icons8 credit visible for free use.";
+}
+
+async function runIcons8Search(): Promise<void> {
+  const term = icons8SearchQuery.value.trim();
+  icons8Error.value = "";
+  icons8Message.value = "";
+  if (!term) {
+    icons8Error.value = "Enter an icon keyword first.";
+    return;
+  }
+  icons8Loading.value = true;
+  try {
+    const response = await searchIcons8(term, icons8SearchLanguage.value, icons8DefaultPlatform, 24);
+    icons8Results.value = response.icons;
+    icons8Message.value = response.message || (response.icons.length ? "" : "No Icons8 icons found.");
+  } catch (unknownError) {
+    icons8Results.value = [];
+    icons8Error.value = unknownError instanceof Error ? unknownError.message : "Icons8 search failed";
+  } finally {
+    icons8Loading.value = false;
+  }
+}
 function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | null {
+  const page = selectedPage.value;
   if (tool === "text") {
-    const size = { width: 28, height: 10 };
+    const size = { width: 32, height: 12 };
     const position = layerPlacementFromPointer(event, size.width, size.height);
     return {
       type: "text",
       name: "Text",
       text: "Text",
+      page,
       ...position,
       ...size,
-      color: "#2f281c",
-      fontFamily: "Georgia",
-      fontSize: 20,
-      fontWeight: 700,
+      color: "#1f2937",
+      fontFamily: "system-ui, \"Segoe UI\", \"Be Vietnam Pro\", Arial, sans-serif",
+      fontSize: 18,
+      fontWeight: 600,
       opacity: 1,
     };
   }
@@ -672,6 +1145,7 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
     return {
       type: "rect",
       name: "Board",
+      page,
       ...position,
       ...size,
       fill: "#ffffff",
@@ -687,6 +1161,7 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
     return {
       type: "ellipse",
       name: "Ellipse",
+      page,
       ...position,
       ...size,
       fill: "#b1b2b5",
@@ -697,23 +1172,9 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
     };
   }
   if (tool === "icon") {
-    const size = { width: 8, height: 8 };
+    const size = { width: 10, height: 10 };
     const position = layerPlacementFromPointer(event, size.width, size.height);
-    const icon = selectedIconAsset.value;
-    return {
-      type: "icon",
-      name: icon.label,
-      text: icon.glyph,
-      iconId: icon.id,
-      ...position,
-      ...size,
-      fill: "#2f281c",
-      color: "#2f281c",
-      fontFamily: "Georgia",
-      fontSize: 22,
-      fontWeight: 700,
-      opacity: 1,
-    };
+    return createIconLayer(selectedIconAsset.value, position.x, position.y);
   }
   return null;
 }
@@ -752,14 +1213,59 @@ function targetAcceptsTextInput(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
 }
 
+function copySelectedLayersToClipboard(cut = false): void {
+  if (selectedLayerIndexes.value.length === 0) {
+    return;
+  }
+  const selected = selectedLayerIndexes.value
+    .slice()
+    .sort((left, right) => left - right)
+    .map((index) => editableLayers.value[index])
+    .filter(isCanvasLayer);
+  if (selected.length === 0) {
+    return;
+  }
+  layerClipboard.value = cloneLayers(selected);
+  if (cut) {
+    deleteSelectedLayers();
+  }
+}
+
+function pasteLayersFromClipboard(): void {
+  if (layerClipboard.value.length === 0) {
+    return;
+  }
+  const duplicates = layerClipboard.value.map((layer) => {
+    const width = numberValue(layer.width, layerDefaultSize(layer, "width"));
+    const height = numberValue(layer.height, layerDefaultSize(layer, "height"));
+    return {
+      ...cloneLayers([layer])[0],
+      page: selectedPage.value,
+      x: roundGeometry(clamp(numberValue(layer.x, 8) + 4, 0, 100 - width)),
+      y: roundGeometry(clamp(numberValue(layer.y, 8) + 4, 0, 100 - height)),
+    };
+  });
+  const insertAt = editableLayers.value.length;
+  const layers = [...editableLayers.value, ...duplicates];
+  // Nudge clipboard so repeated paste cascades.
+  layerClipboard.value = cloneLayers(duplicates);
+  commitLayers(layers, duplicates.map((_, offset) => insertAt + offset));
+  returnToSelectTool();
+}
+
 function handleEditorShortcut(event: KeyboardEvent): void {
   if (!isEditorRoute.value) {
     return;
   }
-  if (event.key === "Escape" && layerContextMenu.value) {
+  if (event.key === "Escape") {
     event.preventDefault();
     event.stopPropagation();
-    closeLayerContextMenu();
+    if (layerContextMenu.value) {
+      closeLayerContextMenu();
+      return;
+    }
+    clearLayerSelection();
+    returnToSelectTool();
     return;
   }
   if (targetAcceptsTextInput(event.target)) {
@@ -768,18 +1274,81 @@ function handleEditorShortcut(event: KeyboardEvent): void {
 
   const key = event.key.toLowerCase();
   const modifier = event.ctrlKey || event.metaKey;
+
   if (modifier && key === "z") {
     event.preventDefault();
     event.shiftKey ? redoLayerChange() : undoLayerChange();
-  } else if (modifier && key === "y") {
+    return;
+  }
+  if (modifier && key === "y") {
     event.preventDefault();
     redoLayerChange();
-  } else if (modifier && key === "d") {
+    return;
+  }
+  if (modifier && key === "c") {
+    event.preventDefault();
+    copySelectedLayersToClipboard(false);
+    return;
+  }
+  if (modifier && key === "x") {
+    event.preventDefault();
+    copySelectedLayersToClipboard(true);
+    return;
+  }
+  if (modifier && key === "v") {
+    event.preventDefault();
+    pasteLayersFromClipboard();
+    return;
+  }
+  if (modifier && key === "d") {
     event.preventDefault();
     duplicateSelectedLayers();
-  } else if (!modifier && event.key === "Delete") {
+    return;
+  }
+  if (modifier && (key === "=" || key === "+" || event.key === "+")) {
+    event.preventDefault();
+    updateEditorZoom(10);
+    return;
+  }
+  if (modifier && key === "-") {
+    event.preventDefault();
+    updateEditorZoom(-10);
+    return;
+  }
+  if (modifier && key === "0") {
+    event.preventDefault();
+    resetEditorView();
+    return;
+  }
+  if (modifier && key === "a") {
+    event.preventDefault();
+    const indexes = pageLayerEntries.value.map((entry) => entry.index);
+    selectedLayerIndexes.value = indexes;
+    selectedLayerIndex.value = indexes.at(-1) ?? 0;
+    return;
+  }
+  if (!modifier && (event.key === "Delete" || event.key === "Backspace")) {
     event.preventDefault();
     deleteSelectedLayers();
+    return;
+  }
+  if (!modifier && !event.altKey) {
+    if (key === "v") {
+      event.preventDefault();
+      selectTool("select");
+    } else if (key === "t") {
+      event.preventDefault();
+      selectTool("text");
+    } else if (key === "r") {
+      event.preventDefault();
+      selectTool("rect");
+    } else if (key === "e") {
+      event.preventDefault();
+      selectTool("ellipse");
+    } else if (key === "i") {
+      event.preventDefault();
+      selectTool("image");
+    }
   }
 }
 
@@ -795,9 +1364,41 @@ function handleLayerContextMenuKeyup(event: KeyboardEvent): void {
 function selectTool(tool: EditorTool): void {
   activeTool.value = tool;
   saveMessage.value = "";
-  if (tool === "image" && !assetPreviewFile.value) {
+  if (tool === "image" && !selectedAsset.value) {
     assetFileInput.value?.click();
   }
+}
+function selectIconForPlacement(icon: IconAsset): void {
+  selectedIconId.value = icon.id;
+  activeTool.value = "icon";
+  saveMessage.value = "";
+}
+
+function startIconDrag(icon: IconAsset, event: DragEvent): void {
+  selectIconForPlacement(icon);
+  draggedIconId.value = icon.id;
+  event.dataTransfer?.setData(iconDragDataType, icon.id);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "copy";
+  }
+}
+
+function endIconDrag(): void {
+  draggedIconId.value = null;
+  assetDropActive.value = false;
+}
+
+function startIcons8Drag(icon: Icons8Icon, event: DragEvent): void {
+  draggedIcons8Id.value = icon.id;
+  event.dataTransfer?.setData(icons8DragDataType, icon.id);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "copy";
+  }
+}
+
+function endIcons8Drag(): void {
+  draggedIcons8Id.value = null;
+  assetDropActive.value = false;
 }
 
 function selectLayer(index: number, event?: MouseEvent | KeyboardEvent): void {
@@ -817,7 +1418,24 @@ function selectLayer(index: number, event?: MouseEvent | KeyboardEvent): void {
 
 function clearLayerSelection(): void {
   selectedLayerIndexes.value = [];
+  selectedLayerIndex.value = 0;
   saveMessage.value = "";
+}
+
+function handleCanvasLayerPointerDown(localIndex: number, event: PointerEvent): void {
+  startLayerDrag(localCanvasIndexToGlobal(localIndex), event);
+}
+
+function handleCanvasLayerResizePointerDown(localIndex: number, event: PointerEvent): void {
+  startLayerResize(localCanvasIndexToGlobal(localIndex), event);
+}
+
+function handleCanvasLayerRotatePointerDown(localIndex: number, event: PointerEvent): void {
+  startLayerRotate(localCanvasIndexToGlobal(localIndex), event);
+}
+
+function handleCanvasLayerSelect(localIndex: number, event: KeyboardEvent): void {
+  selectLayer(localCanvasIndexToGlobal(localIndex), event);
 }
 
 function startLayerDrag(index: number, event: PointerEvent): void {
@@ -886,8 +1504,8 @@ function startLayerDrag(index: number, event: PointerEvent): void {
       }
       layers[selected] = {
         ...layer,
-        x: start.x + deltaX,
-        y: start.y + deltaY,
+        x: roundGeometry(start.x + deltaX),
+        y: roundGeometry(start.y + deltaY),
       };
     }
     editableLayers.value = layers;
@@ -922,12 +1540,12 @@ function startLayerResize(index: number, event: PointerEvent): void {
 
   const move = (moveEvent: PointerEvent) => {
     const width = clamp(
-      startWidth + ((moveEvent.clientX - startX) / frameRect.width) * 100,
+      roundGeometry(startWidth + ((moveEvent.clientX - startX) / frameRect.width) * 100),
       3,
       100 - x,
     );
     const height = clamp(
-      startHeight + ((moveEvent.clientY - startY) / frameRect.height) * 100,
+      roundGeometry(startHeight + ((moveEvent.clientY - startY) / frameRect.height) * 100),
       3,
       100 - y,
     );
@@ -986,17 +1604,47 @@ function angleFromCenter(clientX: number, clientY: number, centerX: number, cent
 }
 
 function normalizeDegrees(value: number): number {
-  const rounded = Math.round(value * 100) / 100;
-  return ((rounded % 360) + 360) % 360;
+  const rounded = roundGeometry(value);
+  return roundGeometry(((rounded % 360) + 360) % 360);
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
+function roundGeometry(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 function selectedLayerNumber(field: string, fallback: number): number {
   const layer = selectedLayer.value;
   return layer ? numberValue(layer[field], fallback) : fallback;
+}
+
+/** X/Y UI: card center is 0; unit = 1% of card; values are rounded to one decimal. */
+function selectedLayerCenterCoord(axis: "x" | "y"): number {
+  const layer = selectedLayer.value;
+  if (!layer) {
+    return 0;
+  }
+  const size = axis === "x"
+    ? numberValue(layer.width, layerDefaultSize(layer, "width"))
+    : numberValue(layer.height, layerDefaultSize(layer, "height"));
+  const origin = numberValue(layer[axis], 8);
+  return roundGeometry(origin + size / 2 - 50);
+}
+
+function selectedLayerSizeInt(field: "width" | "height"): number {
+  const layer = selectedLayer.value;
+  if (!layer) {
+    return layerDefaultSize({ type: "text" }, field);
+  }
+  return roundGeometry(numberValue(layer[field], layerDefaultSize(layer, field)));
+}
+
+function selectedLayerRotationInt(): number {
+  const layer = selectedLayer.value;
+  return layer ? normalizeDegrees(numberValue(layer.rotation, 0)) : 0;
 }
 
 function selectedLayerPercent(field: string, fallback: number): number {
@@ -1021,24 +1669,39 @@ function updateSelectedLayerNumber(field: "x" | "y" | "width" | "height" | "rota
 
   const width = numberValue(layer.width, layerDefaultSize(layer, "width"));
   const height = numberValue(layer.height, layerDefaultSize(layer, "height"));
-  let nextValue = value;
+  const x = numberValue(layer.x, 8);
+  const y = numberValue(layer.y, 8);
+  const patch: CanvasLayer = { ...layer };
+
   if (field === "rotation") {
-    nextValue = normalizeDegrees(value);
+    patch.rotation = normalizeDegrees(value);
   } else if (field === "x") {
-    nextValue = clamp(value, 0, 100 - width);
+    // Input is center-origin percent; storage stays top-left percent rounded to one decimal.
+    const minCenter = width / 2;
+    const maxCenter = 100 - width / 2;
+    const center = clamp(50 + roundGeometry(value), minCenter, maxCenter);
+    patch.x = roundGeometry(center - width / 2);
   } else if (field === "y") {
-    nextValue = clamp(value, 0, 100 - height);
+    const minCenter = height / 2;
+    const maxCenter = 100 - height / 2;
+    const center = clamp(50 + roundGeometry(value), minCenter, maxCenter);
+    patch.y = roundGeometry(center - height / 2);
   } else if (field === "width") {
-    nextValue = clamp(value, 3, 100 - numberValue(layer.x, 8));
+    const nextWidth = clamp(roundGeometry(value), 3, 100);
+    const center = x + width / 2;
+    const nextX = clamp(center - nextWidth / 2, 0, 100 - nextWidth);
+    patch.width = nextWidth;
+    patch.x = roundGeometry(nextX);
   } else {
-    nextValue = clamp(value, 3, 100 - numberValue(layer.y, 8));
+    const nextHeight = clamp(roundGeometry(value), 3, 100);
+    const center = y + height / 2;
+    const nextY = clamp(center - nextHeight / 2, 0, 100 - nextHeight);
+    patch.height = nextHeight;
+    patch.y = roundGeometry(nextY);
   }
 
   const layers = [...editableLayers.value];
-  layers[selectedLayerIndex.value] = {
-    ...layer,
-    [field]: Math.round(nextValue * 100) / 100,
-  };
+  layers[selectedLayerIndex.value] = patch;
   commitLayers(layers);
 }
 
@@ -1233,14 +1896,30 @@ function reorderLayerByPanelIndex(sourceIndex: number, targetPanelIndex: number)
 
   const [moved] = panelOrder.splice(currentPanelIndex, 1);
   panelOrder.splice(targetPanelIndex, 0, moved);
-  const nextOrder = panelOrder.reverse();
-  const oldToNew = new Map(nextOrder.map((oldIndex, newIndex) => [oldIndex, newIndex]));
-  const layers = nextOrder.map((oldIndex) => editableLayers.value[oldIndex]).filter(isCanvasLayer);
+  const newPageOrder = [...panelOrder].reverse();
+  const pagePositions = editableLayers.value
+    .map((layer, index) => (layerPage(layer) === selectedPage.value ? index : -1))
+    .filter((index) => index >= 0);
+  if (pagePositions.length !== newPageOrder.length) {
+    return;
+  }
+
+  const nextLayers = [...editableLayers.value];
+  const oldToNew = new Map<number, number>();
+  pagePositions.forEach((position, order) => {
+    const oldIndex = newPageOrder[order]!;
+    nextLayers[position] = editableLayers.value[oldIndex]!;
+    oldToNew.set(oldIndex, position);
+  });
+
   const nextSelectedIndexes = selectedLayerIndexes.value
-    .map((selected) => oldToNew.get(selected))
-    .filter((index): index is number => typeof index === "number")
+    .map((selected) => oldToNew.get(selected) ?? selected)
+    .filter((index, _i, all) => all.indexOf(index) === index)
     .sort((left, right) => left - right);
-  commitLayers(layers, nextSelectedIndexes.length ? nextSelectedIndexes : [oldToNew.get(sourceIndex) ?? 0]);
+  commitLayers(
+    nextLayers,
+    nextSelectedIndexes.length ? nextSelectedIndexes : [oldToNew.get(sourceIndex) ?? sourceIndex],
+  );
 }
 
 function startLayerPanelDrag(index: number, event: DragEvent): void {
@@ -1333,6 +2012,7 @@ function duplicateSelectedLayers(): void {
     const height = numberValue(layer.height, layerDefaultSize(layer, "height"));
     return {
       ...layer,
+      page: layerPage(layer),
       x: Math.round(clamp(numberValue(layer.x, 8) + 4, 0, 100 - width) * 100) / 100,
       y: Math.round(clamp(numberValue(layer.y, 8) + 4, 0, 100 - height) * 100) / 100,
     };
@@ -1341,6 +2021,27 @@ function duplicateSelectedLayers(): void {
   const layers = [...editableLayers.value];
   layers.splice(insertAt, 0, ...duplicates);
   commitLayers(layers, duplicates.map((_, offset) => insertAt + offset));
+}
+
+async function runPreflightCheck(): Promise<void> {
+  if (!design.value || preflightLoading.value) {
+    return;
+  }
+  preflightLoading.value = true;
+  preflightError.value = "";
+  try {
+    // Persist latest canvas so server preflight matches the current editor state.
+    design.value = await updateDesign(design.value.id, design.value.name, serializeCanvas());
+    saveMessage.value = `Draft #${design.value.id} saved`;
+    preflightReport.value = await preflightDesign(design.value.id);
+  } catch (unknownError) {
+    preflightError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot run preflight";
+    preflightReport.value = null;
+  } finally {
+    preflightLoading.value = false;
+  }
 }
 
 function deleteSelectedLayers(): void {
@@ -1356,11 +2057,8 @@ function deleteSelectedLayers(): void {
 }
 
 function applyQuickColor(color: string): void {
-  if (selectedPage.value !== "front") {
-    return;
-  }
   const layer = editableLayers.value[selectedLayerIndex.value];
-  if (!layer || layerIsLocked(layer)) {
+  if (!layer || layerIsLocked(layer) || !selectedLayerCanEditAppearance.value) {
     return;
   }
 
@@ -1470,6 +2168,32 @@ async function saveDraft(): Promise<void> {
   }
 }
 
+async function renameDesign(): Promise<void> {
+  if (!design.value || saving.value) {
+    return;
+  }
+  const next = window.prompt("Draft name", design.value.name);
+  if (next === null) {
+    return;
+  }
+  const trimmed = next.trim().slice(0, 160);
+  if (!trimmed || trimmed === design.value.name) {
+    return;
+  }
+
+  saving.value = true;
+  saveError.value = "";
+  try {
+    const saved = await updateDesign(design.value.id, trimmed, serializeCanvas());
+    design.value = saved;
+    saveMessage.value = `Renamed - Draft #${saved.id} saved`;
+  } catch (unknownError) {
+    saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot rename draft";
+  } finally {
+    saving.value = false;
+  }
+}
+
 async function deleteDraft(): Promise<void> {
   if (!design.value || deleting.value) {
     return;
@@ -1499,6 +2223,7 @@ onMounted(async () => {
   document.addEventListener("keydown", handleEditorShortcut, true);
   document.addEventListener("keyup", handleLayerContextMenuKeyup, true);
   document.addEventListener("pointerdown", handleGlobalPointerDown, true);
+  loadSidebarWidths();
   if (!Number.isFinite(designId.value)) {
     error.value = "Draft id is invalid";
     loading.value = false;
@@ -1521,7 +2246,7 @@ onUnmounted(() => {
   document.removeEventListener("keydown", handleEditorShortcut, true);
   document.removeEventListener("keyup", handleLayerContextMenuKeyup, true);
   document.removeEventListener("pointerdown", handleGlobalPointerDown, true);
-  revokeAssetPreview();
+  revokeAllAssetLibrary();
 });
 </script>
 
@@ -1540,10 +2265,26 @@ onUnmounted(() => {
         <div>
           <p class="eyebrow">Draft #{{ design.id }}</p>
           <h1>{{ design.name }}</h1>
+          <button
+            class="secondary-action editor-rename-button"
+            type="button"
+            :disabled="saving"
+            @click="renameDesign"
+          >
+            Rename
+          </button>
         </div>
         <div class="editor-header-actions">
           <span v-if="saveMessage" class="save-status" role="status">{{ saveMessage }}</span>
           <span v-else-if="!saveError" class="muted">Saved draft</span>
+          <button
+            class="secondary-action"
+            type="button"
+            :disabled="preflightLoading || saving"
+            @click="runPreflightCheck"
+          >
+            {{ preflightLoading ? "Checking..." : "Preflight" }}
+          </button>
           <RouterLink
             class="secondary-action"
             :to="{ name: 'checkout', params: { designId: design.id } }"
@@ -1555,8 +2296,23 @@ onUnmounted(() => {
           </button>
         </div>
       </header>
+      <p v-if="preflightError" class="error-text" role="alert">{{ preflightError }}</p>
+      <div v-if="preflightReport" class="editor-preflight" role="status">
+        <strong>{{ preflightReport.valid ? "Preflight passed" : "Preflight found issues" }}</strong>
+        <ul v-if="preflightReport.issues.length">
+          <li v-for="(issue, index) in preflightReport.issues" :key="`${issue.code}-${index}`">
+            [{{ issue.level }}] {{ issue.message }}
+            <span v-if="issue.layerIndex != null"> (layer {{ issue.layerIndex + 1 }})</span>
+          </li>
+        </ul>
+        <p v-else class="muted">No issues reported.</p>
+      </div>
 
-      <div class="editor-shell">
+      <div
+        class="editor-shell"
+        :class="{ 'editor-shell--resizing': resizingSidebar !== null }"
+        :style="editorShellStyle"
+      >
         <aside class="editor-sidebar editor-sidebar--left" aria-label="Editor sidebar">
           <section class="editor-section">
             <h2>Pages</h2>
@@ -1567,7 +2323,7 @@ onUnmounted(() => {
                 type="button"
                 :class="{ active: selectedPage === page.id }"
                 :aria-pressed="selectedPage === page.id"
-                @click="selectedPage = page.id"
+                @click="setSelectedPage(page.id)"
               >
                 {{ page.label }}
               </button>
@@ -1723,76 +2479,191 @@ onUnmounted(() => {
             </div>
             <p v-if="displayedCanvasLayers.length === 0" class="muted">No layers</p>
           </section>
-          <section class="editor-section">
+          <section
+            class="editor-section"
+            :class="{ 'editor-section--drop-active': assetDropActive }"
+            aria-label="Assets panel"
+            @dragover="onAssetDragOver"
+            @dragleave="onAssetDragLeave"
+            @drop="onAssetDrop"
+          >
             <h2>Assets</h2>
             <label class="editor-upload-control">
-              <span>Image preview</span>
+              <span>Images (multi)</span>
               <input
                 ref="assetFileInput"
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
-                aria-label="Preview image asset"
+                multiple
+                aria-label="Add image assets"
                 @change="previewAssetImage"
               >
             </label>
+            <p class="muted editor-drop-hint">
+              Drop images here or on canvas. Zoom: pinch / Ctrl+scroll - Pan: two-finger scroll. Shortcuts: Ctrl+C/V/X/Z, V/T/R/E/I.
+            </p>
             <p v-if="assetPreviewError" class="error-text editor-upload-error" role="alert">
               {{ assetPreviewError }}
             </p>
-            <figure v-if="assetPreviewUrl" class="editor-asset-preview">
-              <img :src="assetPreviewUrl" :alt="assetPreviewName" @load="captureAssetDimensions">
-              <figcaption>
-                <strong>{{ assetPreviewName }}</strong>
-                <span>{{ assetPreviewSize }}</span>
-              </figcaption>
-              <button
-                type="button"
-                :disabled="
-                  assetUploading
-                    || selectedPage !== 'front'
-                    || assetPreviewPixelWidth <= 0
-                    || assetPreviewPixelHeight <= 0
-                "
-                @click="() => addPreviewAssetToCanvas()"
+            <div v-if="assetLibrary.length" class="editor-asset-library" aria-label="Image library">
+              <article
+                v-for="asset in assetLibrary"
+                :key="asset.id"
+                class="editor-asset-card"
+                :class="{ active: selectedAssetId === asset.id }"
               >
-                {{ assetUploading ? "Uploading..." : "Add to canvas" }}
-              </button>
-              <button type="button" @click="clearAssetPreview">Clear</button>
-            </figure>
-            <p v-else-if="!assetPreviewError" class="muted">No uploaded assets</p>
-            <div class="editor-icon-library" aria-label="Icon library">
+                <button
+                  type="button"
+                  class="editor-asset-card-main"
+                  :aria-pressed="selectedAssetId === asset.id"
+                  :aria-label="`Select image ${asset.name}`"
+                  @click="selectedAssetId = asset.id; activeTool = 'image'"
+                >
+                  <img :src="asset.url" :alt="asset.name">
+                  <span>
+                    <strong>{{ asset.name }}</strong>
+                    <small>{{ asset.sizeLabel }} - {{ asset.pixelWidth }}x{{ asset.pixelHeight }}</small>
+                  </span>
+                </button>
+                <div class="editor-asset-card-actions">
+                  <button
+                    type="button"
+                    :disabled="assetUploading || asset.pixelWidth <= 0"
+                    @click="() => addAssetToCanvas(asset)"
+                  >
+                    Add
+                  </button>
+                  <button type="button" @click="removeAssetFromLibrary(asset.id)">
+                    Remove
+                  </button>
+                </div>
+              </article>
+            </div>
+            <p v-else-if="!assetPreviewError" class="muted">No images yet - upload or drop several files.</p>
+            <div class="editor-icon-library" aria-label="Emoji library">
               <label>
-                <span>Icon search</span>
+                <span>Emoji search ({{ filteredIconAssets.length }})</span>
                 <input
                   v-model="iconSearchQuery"
                   type="search"
-                  placeholder="Search icons"
-                  aria-label="Search icons"
+                  placeholder="Search emoji"
+                  aria-label="Search emoji"
                 >
               </label>
-              <div class="editor-icon-grid" aria-label="Icon results">
+              <p class="muted editor-drop-hint">
+                Select an emoji, then click the card. Or drag it directly onto the card.
+              </p>
+              <div v-if="filteredIconAssets.length" class="editor-icon-grid" aria-label="Emoji results">
                 <button
                   v-for="icon in filteredIconAssets"
                   :key="icon.id"
                   type="button"
+                  draggable="true"
                   :class="{ active: selectedIconId === icon.id }"
                   :aria-pressed="selectedIconId === icon.id"
-                  :aria-label="`Select ${icon.label} icon`"
-                  :title="icon.label"
-                  @click="selectedIconId = icon.id; activeTool = 'icon'"
+                  :aria-label="`Select ${icon.label} emoji`"
+                  :title="`${icon.label} - drag to card or click to place`"
+                  @click="selectIconForPlacement(icon)"
+                  @dragstart="startIconDrag(icon, $event)"
+                  @dragend="endIconDrag"
                 >
                   <span class="editor-icon-glyph" aria-hidden="true">{{ icon.glyph }}</span>
                   <span>{{ icon.label }}</span>
                 </button>
               </div>
-              <p v-if="filteredIconAssets.length === 0" class="muted">No icons found</p>
+              <p v-else class="editor-empty-state" role="status">
+                No emoji found. Try shop, star, phone, or clear search.
+              </p>
+            </div>
+
+            <div class="editor-icon-library editor-icons8-library" aria-label="Icons8 library">
+              <div class="editor-icons8-search-row">
+                <label>
+                  <span>Icons8 search</span>
+                  <input
+                    v-model="icons8SearchQuery"
+                    type="search"
+                    placeholder="Search Icons8 icons"
+                    aria-label="Search Icons8 icons"
+                    @keydown.enter.prevent="runIcons8Search"
+                  >
+                </label>
+                <label>
+                  <span>Language</span>
+                  <select v-model="icons8SearchLanguage" aria-label="Icons8 search language">
+                    <option
+                      v-for="language in icons8LanguageOptions"
+                      :key="language.id"
+                      :value="language.id"
+                    >
+                      {{ language.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <button
+                type="button"
+                class="editor-icons8-search-button"
+                :disabled="icons8Loading"
+                @click="runIcons8Search"
+              >
+                {{ icons8Loading ? "Searching..." : "Search Icons8" }}
+              </button>
+              <p class="muted editor-drop-hint">
+                Add or drag Icons8 results into the card. Free use requires visible attribution.
+                <a href="https://icons8.com" target="_blank" rel="noreferrer">Icons by Icons8</a>
+              </p>
+              <p v-if="icons8Error" class="error-text editor-upload-error" role="alert">
+                {{ icons8Error }}
+              </p>
+              <p v-else-if="icons8Message" class="muted editor-drop-hint" role="status">
+                {{ icons8Message }}
+              </p>
+              <div v-if="icons8Results.length" class="editor-icons8-grid" aria-label="Icons8 results">
+                <article
+                  v-for="icon in icons8Results"
+                  :key="icon.id"
+                  class="editor-icons8-card"
+                  draggable="true"
+                  @dragstart="startIcons8Drag(icon, $event)"
+                  @dragend="endIcons8Drag"
+                >
+                  <img :src="icon.previewUrl" :alt="icon.name" loading="lazy" referrerpolicy="no-referrer">
+                  <span>{{ icon.name }}</span>
+                  <button type="button" @click="addIcons8IconToCanvas(icon)">
+                    Add
+                  </button>
+                </article>
+              </div>
+              <p v-else-if="!icons8Loading && !icons8Error && !icons8Message" class="editor-empty-state" role="status">
+                Search Icons8 by keyword in English, Russian, Vietnamese, or another language.
+              </p>
             </div>
           </section>
         </aside>
+
+        <div
+          class="editor-resizer editor-resizer--left"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize left sidebar"
+          :aria-valuenow="leftSidebarWidth"
+          :aria-valuemin="LEFT_SIDEBAR_MIN"
+          :aria-valuemax="LEFT_SIDEBAR_MAX"
+          tabindex="0"
+          title="Drag to resize left panel"
+          @pointerdown="startSidebarResize('left', $event)"
+          @keydown="handleSidebarResizeKey('left', $event)"
+        />
 
         <section
           class="editor-workspace"
           aria-label="Card canvas workspace"
           @pointerdown="startCanvasPan"
+          @wheel.prevent="handleEditorWheel"
+          @dragover.prevent="onAssetDragOver"
+          @dragleave="onAssetDragLeave"
+          @drop="onWorkspaceDrop"
         >
           <div class="editor-toolbar" role="toolbar" aria-label="Canvas tools">
             <button
@@ -1813,7 +2684,12 @@ onUnmounted(() => {
             <button type="button" aria-label="Zoom out canvas" title="Zoom out" @click="updateEditorZoom(-10)">
               <ZoomOut :size="16" :stroke-width="1.8" aria-hidden="true" />
             </button>
-            <button type="button" aria-label="Reset canvas view" title="Reset view" @click="resetEditorView">
+            <button
+              type="button"
+              aria-label="Reset canvas view"
+              title="Reset view - Pinch or Ctrl+scroll to zoom - Two-finger scroll to pan"
+              @click="resetEditorView"
+            >
               {{ editorZoom }}%
             </button>
             <button type="button" aria-label="Zoom in canvas" title="Zoom in" @click="updateEditorZoom(10)">
@@ -1831,9 +2707,15 @@ onUnmounted(() => {
             <button type="button" aria-label="Pan canvas down" title="Pan down" @click="updateEditorPan(0, 40)">
               <ArrowDown :size="16" :stroke-width="1.8" aria-hidden="true" />
             </button>
-            <span title="Drag empty workspace to pan, or use arrow buttons">
+            <span title="Drag empty workspace / two-finger pan - Pinch or Ctrl+scroll zoom">
               <Move :size="16" :stroke-width="1.8" aria-hidden="true" />
             </span>
+          </div>
+          <div class="editor-guide-toggle">
+            <label>
+              <input v-model="showSafeZoneGuides" type="checkbox" />
+              <span>Safe zone / bleed guides</span>
+            </label>
           </div>
           <div
             class="editor-canvas-viewport"
@@ -1847,16 +2729,17 @@ onUnmounted(() => {
               :height-mm="design.heightMm"
               label="Draft canvas preview"
               :empty-label="selectedPageLabel"
-              :selected-layer-index="selectedLayerIndex"
-              :selected-layer-indexes="selectedLayerIndexes"
-              :resizable-layer-index="resizableLayerIndex"
-              :rotatable-layer-index="rotatableLayerIndex"
+              :selected-layer-index="canvasSelectedLayerIndex"
+              :selected-layer-indexes="canvasSelectedLayerIndexes"
+              :resizable-layer-index="canvasResizableLayerIndex"
+              :rotatable-layer-index="canvasRotatableLayerIndex"
+              :show-safe-zone-guides="showSafeZoneGuides"
               interactive
               @canvas-pointerdown="handleCanvasPointerDown"
-              @layer-pointerdown="startLayerDrag"
-              @layer-resize-pointerdown="startLayerResize"
-              @layer-rotate-pointerdown="startLayerRotate"
-              @layer-select="selectLayer"
+              @layer-pointerdown="handleCanvasLayerPointerDown"
+              @layer-resize-pointerdown="handleCanvasLayerResizePointerDown"
+              @layer-rotate-pointerdown="handleCanvasLayerRotatePointerDown"
+              @layer-select="handleCanvasLayerSelect"
             />
           </div>
           <div class="editor-color-bar" aria-label="Quick colors">
@@ -1889,6 +2772,20 @@ onUnmounted(() => {
             <span class="editor-color-value">{{ selectedLayerLabel }}</span>
           </div>
         </section>
+
+        <div
+          class="editor-resizer editor-resizer--right"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize right sidebar"
+          :aria-valuenow="rightSidebarWidth"
+          :aria-valuemin="RIGHT_SIDEBAR_MIN"
+          :aria-valuemax="RIGHT_SIDEBAR_MAX"
+          tabindex="0"
+          title="Drag to resize right panel"
+          @pointerdown="startSidebarResize('right', $event)"
+          @keydown="handleSidebarResizeKey('right', $event)"
+        />
 
         <aside class="editor-sidebar editor-sidebar--right" aria-label="Properties panel">
           <section class="editor-section">
@@ -1928,73 +2825,92 @@ onUnmounted(() => {
               class="editor-geometry"
               aria-label="Selected layer geometry"
             >
-              <label>
-                <span>X %</span>
+              <label title="Horizontal position from card center (0 = middle). Unit = 1% of card width.">
+                <span>X</span>
                 <input
                   type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  :value="selectedLayerNumber('x', 8)"
+                  min="-50"
+                  max="50"
+                  step="0.1"
+                  :value="selectedLayerCenterCoord('x')"
                   :disabled="!selectedLayerCanEditGeometry"
-                  aria-label="Layer X"
+                  aria-label="Layer X from center"
                   @input="updateSelectedLayerNumber('x', $event)"
                 />
               </label>
-              <label>
-                <span>Y %</span>
+              <label title="Vertical position from card center (0 = middle). Unit = 1% of card height.">
+                <span>Y</span>
                 <input
                   type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  :value="selectedLayerNumber('y', 8)"
+                  min="-50"
+                  max="50"
+                  step="0.1"
+                  :value="selectedLayerCenterCoord('y')"
                   :disabled="!selectedLayerCanEditGeometry"
-                  aria-label="Layer Y"
+                  aria-label="Layer Y from center"
                   @input="updateSelectedLayerNumber('y', $event)"
                 />
               </label>
-              <label>
+              <label title="Width as one-decimal percent of card width">
                 <span>W %</span>
                 <input
                   type="number"
                   min="3"
                   max="100"
-                  step="0.01"
-                  :value="selectedLayerNumber('width', layerDefaultSize(selectedLayer, 'width'))"
+                  step="0.1"
+                  :value="selectedLayerSizeInt('width')"
                   :disabled="!selectedLayerCanEditGeometry"
-                  aria-label="Layer width"
+                  aria-label="Layer width percent"
                   @input="updateSelectedLayerNumber('width', $event)"
                 />
               </label>
-              <label>
+              <label title="Height as one-decimal percent of card height">
                 <span>H %</span>
                 <input
                   type="number"
                   min="3"
                   max="100"
-                  step="0.01"
-                  :value="selectedLayerNumber('height', layerDefaultSize(selectedLayer, 'height'))"
+                  step="0.1"
+                  :value="selectedLayerSizeInt('height')"
                   :disabled="!selectedLayerCanEditGeometry"
-                  aria-label="Layer height"
+                  aria-label="Layer height percent"
                   @input="updateSelectedLayerNumber('height', $event)"
                 />
               </label>
-              <label>
-                <span>R</span>
+              <label title="Rotation in one-decimal degrees">
+                <span>R deg</span>
                 <input
                   type="number"
                   min="0"
-                  max="360"
-                  step="0.01"
-                  :value="selectedLayerNumber('rotation', 0)"
+                  max="359"
+                  step="0.1"
+                  :value="selectedLayerRotationInt()"
                   :disabled="!selectedLayerCanEditGeometry"
-                  aria-label="Layer rotation"
+                  aria-label="Layer rotation degrees"
                   @input="updateSelectedLayerNumber('rotation', $event)"
                 />
               </label>
             </div>
             <p v-else class="muted">Select one layer to edit geometry.</p>
+            <div
+              v-if="selectedLayerIsImage"
+              class="editor-image-tools"
+              aria-label="Selected image tools"
+            >
+              <p class="muted">Portrait / image layer</p>
+              <button
+                type="button"
+                class="secondary-action"
+                :disabled="!selectedLayerCanEditGeometry || randomPhotoLoading"
+                @click="applyRandomPhotoToSelectedImage"
+              >
+                {{ randomPhotoLoading ? "Loading..." : "Random portrait" }}
+              </button>
+              <p v-if="randomPhotoError" class="error-text" role="alert">{{ randomPhotoError }}</p>
+              <p class="muted editor-drop-hint">
+                Uses free demo portraits (randomuser.me). Re-click for another face.
+              </p>
+            </div>
             <div
               v-if="selectedLayerIndexes.length === 1 && selectedLayer && selectedLayer.type === 'text'"
               class="editor-text-style"
@@ -2260,17 +3176,17 @@ onUnmounted(() => {
               </div>
             </div>
           </section>
-          <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
-            <label for="editor-text-layer">Text layer</label>
+          <div v-if="editableTextLayerIndex >= 0" class="editor-panel">
+            <label for="editor-text-layer">Text content (selected)</label>
             <textarea
               id="editor-text-layer"
-              v-model="firstTextLayerText"
+              v-model="editableTextLayerText"
               maxlength="120"
               rows="5"
-              :disabled="firstTextLayerLocked"
+              :disabled="editableTextLayerLocked"
             />
           </div>
-          <p v-else class="muted">No text layer.</p>
+          <p v-else class="muted">Select a text layer to edit content.</p>
 
           <p v-if="saveError" class="error-text" role="alert">{{ saveError }}</p>
           <button
@@ -2301,7 +3217,7 @@ onUnmounted(() => {
         <h1>{{ design.name }}</h1>
         <p class="summary">
           {{ design.widthMm }} x {{ design.heightMm }} mm canvas with
-          {{ canvasLayerCount }} layer<span v-if="canvasLayerCount !== 1">s</span>.
+          {{ canvasLayerCount }} {{ canvasLayerCount === 1 ? "layer" : "layers" }}.
         </p>
 
         <div class="detail-actions">
@@ -2327,11 +3243,11 @@ onUnmounted(() => {
         </div>
         <p v-if="saveError" class="error-text" role="alert">{{ saveError }}</p>
 
-        <div v-if="firstTextLayerIndex >= 0" class="editor-panel">
+        <div v-if="editableTextLayerIndex >= 0" class="editor-panel">
           <label for="draft-text-layer">Text layer</label>
           <textarea
             id="draft-text-layer"
-            v-model="firstTextLayerText"
+            v-model="editableTextLayerText"
             maxlength="120"
             rows="4"
           />

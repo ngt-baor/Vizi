@@ -5,18 +5,41 @@ type CanvasLayer = Record<string, unknown> & {
   type?: string;
 };
 
-const props = defineProps<{
-  layers: CanvasLayer[];
-  widthMm: number;
-  heightMm: number;
-  label: string;
-  emptyLabel: string;
-  selectedLayerIndex?: number | null;
-  selectedLayerIndexes?: number[];
-  resizableLayerIndex?: number | null;
-  rotatableLayerIndex?: number | null;
-  interactive?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    layers: CanvasLayer[];
+    widthMm: number;
+    heightMm: number;
+    label: string;
+    emptyLabel: string;
+    selectedLayerIndex?: number | null;
+    selectedLayerIndexes?: number[];
+    resizableLayerIndex?: number | null;
+    rotatableLayerIndex?: number | null;
+    interactive?: boolean;
+    showSafeZoneGuides?: boolean;
+    safeZoneMm?: number;
+    bleedMm?: number;
+  }>(),
+  {
+    showSafeZoneGuides: false,
+    safeZoneMm: 3,
+    bleedMm: 2,
+  },
+);
+
+const guideStyle = computed(() => {
+  const safeX = props.widthMm > 0 ? (props.safeZoneMm / props.widthMm) * 100 : 0;
+  const safeY = props.heightMm > 0 ? (props.safeZoneMm / props.heightMm) * 100 : 0;
+  const bleedX = props.widthMm > 0 ? (props.bleedMm / props.widthMm) * 100 : 0;
+  const bleedY = props.heightMm > 0 ? (props.bleedMm / props.heightMm) * 100 : 0;
+  return {
+    "--safe-inset-x": `${safeX}%`,
+    "--safe-inset-y": `${safeY}%`,
+    "--bleed-inset-x": `${Math.max(0, bleedX)}%`,
+    "--bleed-inset-y": `${Math.max(0, bleedY)}%`,
+  };
+});
 
 const emit = defineEmits<{
   canvasPointerdown: [event: PointerEvent];
@@ -89,10 +112,12 @@ function layerIsSelected(index: number): boolean {
 function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const x = numberValue(layer.x, 8);
   const y = numberValue(layer.y, 8);
-  const textLike = layerIsTextLike(layer);
-  const width = numberValue(layer.width, textLike ? 45 : 32);
-  const height = numberValue(layer.height, textLike ? 16 : 26);
-  const fontSize = numberValue(layer.fontSize, 14);
+  const isIcon = layer.type === "icon";
+  const isText = layer.type === "text";
+  const textLike = isText || isIcon;
+  const width = numberValue(layer.width, isText ? 45 : isIcon ? 10 : 32);
+  const height = numberValue(layer.height, isText ? 16 : isIcon ? 10 : 26);
+  const fontSize = numberValue(layer.fontSize, isIcon ? 28 : 14);
   const stroke = stringValue(layer.stroke, "rgba(122, 93, 46, 0.18)");
   const strokeWidth = numberValue(layer.strokeWidth, 1);
   const blur = numberValue(layer.blur, 0);
@@ -109,28 +134,39 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
     ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${shadowColor}`
     : "none";
 
+  // Text scales with card width (cqw). Icons use symbol/emoji font stacks so
+  // glyphs do not fall back to Georgia (which lacks most symbols).
+  const textFontSize = `clamp(10px, ${(fontSize / 3.8).toFixed(3)}cqw, ${Math.max(fontSize, 12)}px)`;
+  const iconFontSize = `clamp(14px, ${(fontSize / 2.6).toFixed(3)}cqw, ${Math.max(fontSize * 1.2, 18)}px)`;
+
   return {
     left: `${x}%`,
     top: `${y}%`,
     width: `${width}%`,
     height: `${height}%`,
-    color: stringValue(layer.color ?? layer.fill, "#2f281c"),
+    color: stringValue(layer.color ?? layer.fill, "#1f2937"),
     background: textLike
       ? "transparent"
       : stringValue(layer.fill ?? layer.background, "rgba(255,255,255,0.72)"),
     border: textLike ? "0" : `${strokeWidth}px solid ${stroke}`,
     borderRadius: layer.type === "ellipse" ? "9999px" : `${numberValue(layer.radius, 10)}px`,
-    fontFamily: stringValue(layer.fontFamily, "inherit"),
-    fontSize: textLike
-      ? `min(${fontSize}px, ${(fontSize / 5.2).toFixed(4)}cqw)`
-      : `${fontSize}px`,
-    fontWeight: numberValue(layer.fontWeight, 700),
+    fontFamily: isIcon
+      ? "\"Segoe UI Emoji\", \"Apple Color Emoji\", \"Noto Color Emoji\", \"Segoe UI Symbol\", \"Noto Sans Symbols 2\", system-ui, sans-serif"
+      : stringValue(
+        layer.fontFamily,
+        "system-ui, \"Segoe UI\", \"Be Vietnam Pro\", \"Helvetica Neue\", Arial, sans-serif",
+      ),
+    fontSize: isIcon ? iconFontSize : isText ? textFontSize : `${fontSize}px`,
+    fontWeight: numberValue(layer.fontWeight, isText ? 600 : 700),
     opacity: numberValue(layer.opacity, 1),
     boxShadow: textLike ? "none" : shadow,
-    textShadow: textLike ? textShadow : "none",
+    textShadow: isText ? textShadow : "none",
     filter: blur > 0 ? `blur(${blur}px)` : "none",
     transform: `rotate(${numberValue(layer.rotation, 0)}deg)`,
     transformOrigin: "center center",
+    lineHeight: isIcon ? 1 : 1.25,
+    letterSpacing: isText ? "0.01em" : "normal",
+    whiteSpace: isText ? "pre-wrap" : "nowrap",
   };
 }
 </script>
@@ -143,6 +179,15 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
     :aria-label="label"
     @pointerdown.self="emit('canvasPointerdown', $event)"
   >
+    <div
+      v-if="showSafeZoneGuides"
+      class="canvas-guides"
+      :style="guideStyle"
+      aria-hidden="true"
+    >
+      <span class="canvas-guide canvas-guide--bleed" />
+      <span class="canvas-guide canvas-guide--safe" />
+    </div>
     <template v-for="(layer, index) in layers" :key="index">
       <div
         v-if="layerIsVisible(layer)"
@@ -160,6 +205,9 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
           v-if="layer.type === 'image' && layerImageSource(layer)"
           :src="layerImageSource(layer)"
           :alt="layerText(layer)"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          draggable="false"
         />
         <template v-else>
           {{ layerText(layer) }}

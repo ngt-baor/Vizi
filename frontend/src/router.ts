@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import HomeView from "./views/HomeView.vue";
 import AccountView from "./views/AccountView.vue";
+import AdminView from "./views/AdminView.vue";
 import CheckoutView from "./views/CheckoutView.vue";
 import DesignDetailView from "./views/DesignDetailView.vue";
 import DesignsView from "./views/DesignsView.vue";
@@ -20,6 +21,11 @@ export const router = createRouter({
       path: "/account",
       name: "account",
       component: AccountView,
+    },
+    {
+      path: "/admin",
+      name: "admin",
+      component: AdminView,
     },
     {
       path: "/designs",
