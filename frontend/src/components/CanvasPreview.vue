@@ -114,6 +114,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const y = numberValue(layer.y, 8);
   const isIcon = layer.type === "icon";
   const isText = layer.type === "text";
+  const isImage = layer.type === "image";
   const textLike = isText || isIcon;
   const width = numberValue(layer.width, isText ? 45 : isIcon ? 10 : 32);
   const height = numberValue(layer.height, isText ? 16 : isIcon ? 10 : 26);
@@ -145,10 +146,10 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
     width: `${width}%`,
     height: `${height}%`,
     color: stringValue(layer.color ?? layer.fill, "#1f2937"),
-    background: textLike
+    background: textLike || isImage
       ? "transparent"
       : stringValue(layer.fill ?? layer.background, "rgba(255,255,255,0.72)"),
-    border: textLike ? "0" : `${strokeWidth}px solid ${stroke}`,
+    border: textLike || isImage ? "0" : `${strokeWidth}px solid ${stroke}`,
     borderRadius: layer.type === "ellipse" ? "9999px" : `${numberValue(layer.radius, 10)}px`,
     fontFamily: isIcon
       ? "\"Segoe UI Emoji\", \"Apple Color Emoji\", \"Noto Color Emoji\", \"Segoe UI Symbol\", \"Noto Sans Symbols 2\", system-ui, sans-serif"

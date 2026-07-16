@@ -112,7 +112,6 @@ const selectedLayerIndexes = ref<number[]>([0]);
 const draggingLayerIndex = ref<number | null>(null);
 const layerContextMenu = ref<LayerContextMenuState | null>(null);
 const layerContextMenuElement = ref<HTMLElement | null>(null);
-const activeColorTarget = ref<ColorTarget>("fill");
 const undoLayerStack = ref<CanvasLayer[][]>([]);
 const redoLayerStack = ref<CanvasLayer[][]>([]);
 const editorZoom = ref(100);
@@ -175,11 +174,6 @@ const editorTools: { id: EditorTool; label: string; icon: typeof MousePointer2 }
   { id: "ellipse", label: "Ellipse", icon: Circle },
   { id: "image", label: "Image", icon: ImageIcon },
 ];
-const colorTargets: { id: ColorTarget; label: string }[] = [
-  { id: "fill", label: "Fill" },
-  { id: "stroke", label: "Stroke" },
-];
-const recentColors = ["#B1B2B5", "#2F281C", "#A87F33", "#5F7344", "#A5382F", "#FFFFFF"];
 const icons8LanguageOptions = [
   { id: "en", label: "English" },
   { id: "ru", label: "Russian" },
@@ -219,9 +213,6 @@ const activeToolLabel = computed(() =>
   activeTool.value === "icon"
     ? "Icon"
     : editorTools.find((tool) => tool.id === activeTool.value)?.label ?? "Select",
-);
-const activeColorTargetLabel = computed(() =>
-  colorTargets.find((target) => target.id === activeColorTarget.value)?.label ?? "Fill",
 );
 const selectedIconAsset = computed(() =>
   iconAssets.find((icon) => icon.id === selectedIconId.value) ?? iconAssets[0],
@@ -361,23 +352,6 @@ const layerContextMenuStyle = computed(() => ({
   left: `${layerContextMenu.value?.x ?? 0}px`,
   top: `${layerContextMenu.value?.y ?? 0}px`,
 }));
-const selectedLayerLabel = computed(() => {
-  if (selectedLayerIndexes.value.length > 1) {
-    return `${selectedLayerIndexes.value.length} layers selected`;
-  }
-  const layer = selectedLayer.value;
-  return layer ? `${layerPanelNumber(selectedLayerIndex.value)}. ${layerDisplayName(layer)}` : "No layer";
-});
-const activeColorValue = computed(() => {
-  const layer = selectedLayer.value;
-  if (!layer) {
-    return "";
-  }
-  if (activeColorTarget.value === "stroke") {
-    return optionalString(layer.stroke) ?? "";
-  }
-  return optionalString(layer.type === "text" ? layer.color : layer.fill ?? layer.background) ?? "";
-});
 const firstTextLayerIndex = computed(() =>
   editableLayers.value.findIndex((layer) => layer.type === "text"),
 );
@@ -1216,7 +1190,7 @@ function createToolLayer(tool: EditorTool, event: PointerEvent): CanvasLayer | n
 }
 
 function startCanvasPan(event: PointerEvent): void {
-  if ((event.target as HTMLElement | null)?.closest(".canvas-frame, .editor-toolbar, .editor-color-bar, .editor-zoom-controls")) {
+  if ((event.target as HTMLElement | null)?.closest(".canvas-frame, .editor-toolbar, .editor-zoom-controls")) {
     return;
   }
 
@@ -2092,20 +2066,6 @@ function deleteSelectedLayers(): void {
   commitLayers(layers, nextIndex >= 0 ? [nextIndex] : []);
 }
 
-function applyQuickColor(color: string): void {
-  const layer = editableLayers.value[selectedLayerIndex.value];
-  if (!layer || layerIsLocked(layer) || !selectedLayerCanEditAppearance.value) {
-    return;
-  }
-
-  const field = activeColorTarget.value === "stroke"
-    ? "stroke"
-    : layer.type === "text" ? "color" : "fill";
-  const layers = [...editableLayers.value];
-  layers[selectedLayerIndex.value] = { ...layer, [field]: color };
-  commitLayers(layers);
-}
-
 async function requestAiTextRewrite(): Promise<void> {
   const currentDesign = design.value;
   const layer = selectedLayer.value;
@@ -2786,35 +2746,6 @@ onUnmounted(() => {
               @layer-select="handleCanvasLayerSelect"
             />
           </div>
-          <div class="editor-color-bar" aria-label="Quick colors">
-            <div class="editor-color-targets" aria-label="Color target">
-              <button
-                v-for="target in colorTargets"
-                :key="target.id"
-                type="button"
-                :class="{ active: activeColorTarget === target.id }"
-                :aria-pressed="activeColorTarget === target.id"
-                @click="activeColorTarget = target.id"
-              >
-                {{ target.label }}
-              </button>
-            </div>
-            <div class="editor-color-swatches" aria-label="Recent colors">
-              <button
-                v-for="color in recentColors"
-                :key="color"
-                type="button"
-                class="editor-color-swatch"
-                :class="{ active: activeColorValue.toUpperCase() === color }"
-                :style="{ '--swatch-color': color }"
-                :aria-label="`Apply ${color} to ${activeColorTargetLabel}`"
-                :title="`${activeColorTargetLabel}: ${color}`"
-                :disabled="!selectedLayer || layerIsLocked(selectedLayer)"
-                @click="applyQuickColor(color)"
-              />
-            </div>
-            <span class="editor-color-value">{{ selectedLayerLabel }}</span>
-          </div>
         </section>
 
         <div
@@ -2846,10 +2777,6 @@ onUnmounted(() => {
               <div>
                 <dt>Tool</dt>
                 <dd>{{ activeToolLabel }}</dd>
-              </div>
-              <div>
-                <dt>Color</dt>
-                <dd>{{ activeColorTargetLabel }}</dd>
               </div>
               <div>
                 <dt>Layers</dt>

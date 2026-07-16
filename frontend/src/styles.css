@@ -2712,6 +2712,12 @@ h2 {
 
   .app-shell--editor .editor-header {
     gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .app-shell--editor .editor-header > div:first-child {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .app-shell--editor .editor-header h1 {
