@@ -1,0 +1,8 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$VIZI_API_HOST} {
+    encode zstd gzip
+    reverse_proxy backend:8080
+}

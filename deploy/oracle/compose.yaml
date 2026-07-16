@@ -1,0 +1,51 @@
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 8080
+      SPRING_PROFILES_ACTIVE: prod
+      APP_UPLOAD_IMAGE_DIR: /app/uploads/images
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 4
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
+    volumes:
+      - vizi-uploads:/app/uploads/images
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - vizi
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - vizi
+
+networks:
+  vizi:
+
+volumes:
+  vizi-uploads:
+  caddy-data:
+  caddy-config:
