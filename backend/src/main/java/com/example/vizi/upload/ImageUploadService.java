@@ -34,24 +34,55 @@ class ImageUploadService {
     private final Path imageDirectory;
     private final AssetRepository assetRepository;
     private final AuthService authService;
+    private final BackgroundRemovalClient backgroundRemovalClient;
 
     ImageUploadService(
             @Value("${app.upload.image-dir:.vizi-uploads/images}") String imageDirectory,
             AssetRepository assetRepository,
-            AuthService authService
+            AuthService authService,
+            BackgroundRemovalClient backgroundRemovalClient
     ) {
         this.imageDirectory = Path.of(imageDirectory).toAbsolutePath().normalize();
         this.assetRepository = assetRepository;
         this.authService = authService;
+        this.backgroundRemovalClient = backgroundRemovalClient;
     }
 
     @Transactional
     ImageUploadResponse store(MultipartFile file, String email) {
         validateFile(file);
-
-        var user = authService.requireUser(email);
         var contentType = normalizeContentType(file.getContentType());
+        try {
+            return storeBytes(file.getBytes(), contentType, email);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot read image");
+        }
+    }
+
+    @Transactional
+    ImageUploadResponse removeBackground(MultipartFile file, String email) {
+        validateFile(file);
+        try {
+            var output = backgroundRemovalClient.remove(
+                    file.getBytes(),
+                    file.getOriginalFilename(),
+                    normalizeContentType(file.getContentType())
+            );
+            if (!hasPngSignature(output) || output.length > MAX_IMAGE_BYTES) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Background removal returned an invalid image");
+            }
+            return storeBytes(output, "image/png", email);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot read image");
+        }
+    }
+
+    private ImageUploadResponse storeBytes(byte[] bytes, String contentType, String email) {
+        var user = authService.requireUser(email);
         var extension = EXTENSIONS_BY_CONTENT_TYPE.get(contentType);
+        if (extension == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported image output type");
+        }
         var fileName = UUID.randomUUID() + "." + extension;
         var storageKey = "images/" + fileName;
         var fileUrl = "/uploads/" + storageKey;
@@ -62,22 +93,15 @@ class ImageUploadService {
 
         try {
             Files.createDirectories(imageDirectory);
-            file.transferTo(target);
+            Files.write(target, bytes);
             var asset = assetRepository.saveAndFlush(new Asset(
                     user,
                     fileUrl,
                     fileName,
                     contentType,
-                    file.getSize()
+                    bytes.length
             ));
-            return new ImageUploadResponse(
-                    asset.id(),
-                    fileName,
-                    contentType,
-                    file.getSize(),
-                    storageKey,
-                    fileUrl
-            );
+            return new ImageUploadResponse(asset.id(), fileName, contentType, bytes.length, storageKey, fileUrl);
         } catch (IOException exception) {
             deleteQuietly(target);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot store image");
@@ -86,7 +110,6 @@ class ImageUploadService {
             throw exception;
         }
     }
-
 
     @Transactional(readOnly = true)
     StoredImage loadOwnedImage(String fileName, String email) {
@@ -165,6 +188,12 @@ class ImageUploadService {
         } catch (IOException exception) {
             return false;
         }
+    }
+
+    private static boolean hasPngSignature(byte[] bytes) {
+        return bytes != null && startsWith(bytes, new byte[] {
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+        });
     }
 
     private static boolean startsWith(byte[] value, byte[] prefix) {

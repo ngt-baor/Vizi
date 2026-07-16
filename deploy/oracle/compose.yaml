@@ -10,6 +10,9 @@ services:
       PORT: 8080
       SPRING_PROFILES_ACTIVE: prod
       APP_UPLOAD_IMAGE_DIR: /app/uploads/images
+      BACKGROUND_REMOVAL_BASE_URL: http://background-removal:7000
+      BACKGROUND_REMOVAL_MODEL: ${BACKGROUND_REMOVAL_MODEL:-u2netp}
+      BACKGROUND_REMOVAL_SHARED_TOKEN: ${BACKGROUND_REMOVAL_SHARED_TOKEN:-}
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 4
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
     volumes:
@@ -20,6 +23,25 @@ services:
       timeout: 10s
       retries: 5
       start_period: 90s
+    networks:
+      - vizi
+
+  background-removal:
+    build:
+      context: ../../background-removal
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REMBG_MODEL: ${BACKGROUND_REMOVAL_MODEL:-u2netp}
+      BACKGROUND_REMOVAL_SHARED_TOKEN: ${BACKGROUND_REMOVAL_SHARED_TOKEN:-}
+    volumes:
+      - vizi-rembg-models:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     networks:
       - vizi
 
@@ -47,5 +69,6 @@ networks:
 
 volumes:
   vizi-uploads:
+  vizi-rembg-models:
   caddy-data:
   caddy-config:

@@ -2738,6 +2738,17 @@ h2 {
     padding: 8px 12px;
   }
 
+  .app-shell--editor .editor-header,
+  .app-shell--editor .editor-shell,
+  .app-shell--editor .editor-workspace,
+  .app-shell--editor .editor-sidebar,
+  .app-shell--editor .editor-canvas-viewport,
+  .app-shell--editor .editor-header-actions,
+  .app-shell--editor .editor-header h1 {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .editor-shell {
     grid-template-columns: 1fr;
   }

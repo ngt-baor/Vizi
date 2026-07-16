@@ -31,6 +31,7 @@ import {
   deleteDesign,
   getDesign,
   preflightDesign,
+  removeBackgroundImageAsset,
   rewriteDesignText,
   searchIcons8,
   updateDesign,
@@ -39,6 +40,7 @@ import {
   type AiTextRewriteResponse,
   type DesignDetail,
   type Icons8Icon,
+  type ImageUploadResponse,
   type PreflightReport,
 } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
@@ -88,6 +90,7 @@ type AssetLibraryItem = {
   sizeLabel: string;
   pixelWidth: number;
   pixelHeight: number;
+  uploaded?: ImageUploadResponse;
 };
 
 
@@ -120,6 +123,7 @@ const assetLibrary = ref<AssetLibraryItem[]>([]);
 const selectedAssetId = ref<string | null>(null);
 const assetPreviewError = ref("");
 const assetUploading = ref(false);
+const backgroundRemovingAssetId = ref<string | null>(null);
 const assetDropActive = ref(false);
 const layerClipboard = ref<CanvasLayer[]>([]);
 const iconSearchQuery = ref("");
@@ -721,7 +725,9 @@ function createAssetId(): string {
 
 function revokeAllAssetLibrary(): void {
   for (const asset of assetLibrary.value) {
-    URL.revokeObjectURL(asset.url);
+    if (asset.url.startsWith("blob:")) {
+      URL.revokeObjectURL(asset.url);
+    }
   }
   assetLibrary.value = [];
   selectedAssetId.value = null;
@@ -732,7 +738,9 @@ function removeAssetFromLibrary(assetId: string): void {
   if (!asset) {
     return;
   }
-  URL.revokeObjectURL(asset.url);
+  if (asset.url.startsWith("blob:")) {
+    URL.revokeObjectURL(asset.url);
+  }
   assetLibrary.value = assetLibrary.value.filter((item) => item.id !== assetId);
   if (selectedAssetId.value === assetId) {
     selectedAssetId.value = assetLibrary.value[0]?.id ?? null;
@@ -852,14 +860,14 @@ function applyRandomPhotoToSelectedImage(): void {
 }
 
 async function addAssetToCanvas(asset: AssetLibraryItem, x = 12, y = 12): Promise<void> {
-  if (assetUploading.value) {
+  if (assetUploading.value || backgroundRemovingAssetId.value) {
     return;
   }
 
   assetUploading.value = true;
   assetPreviewError.value = "";
   try {
-    const uploaded = await uploadImageAsset(asset.file);
+    const uploaded = asset.uploaded ?? await uploadImageAsset(asset.file);
     const layer: CanvasLayer = {
       type: "image",
       name: asset.name || uploaded.fileName,
@@ -883,6 +891,34 @@ async function addAssetToCanvas(asset: AssetLibraryItem, x = 12, y = 12): Promis
     assetPreviewError.value = unknownError instanceof Error ? unknownError.message : "Cannot upload image";
   } finally {
     assetUploading.value = false;
+  }
+}
+
+async function removeBackgroundFromAsset(asset: AssetLibraryItem): Promise<void> {
+  if (asset.uploaded || assetUploading.value || backgroundRemovingAssetId.value) {
+    return;
+  }
+
+  backgroundRemovingAssetId.value = asset.id;
+  assetPreviewError.value = "";
+  try {
+    const uploaded = await removeBackgroundImageAsset(asset.file);
+    const processedAsset: AssetLibraryItem = {
+      ...asset,
+      id: createAssetId(),
+      name: asset.name + " (no background)",
+      url: backendAssetUrl(uploaded.url),
+      uploaded,
+    };
+    assetLibrary.value = [...assetLibrary.value, processedAsset];
+    selectedAssetId.value = processedAsset.id;
+    activeTool.value = "image";
+  } catch (unknownError) {
+    assetPreviewError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot remove image background";
+  } finally {
+    backgroundRemovingAssetId.value = null;
   }
 }
 
@@ -2528,10 +2564,18 @@ onUnmounted(() => {
                 <div class="editor-asset-card-actions">
                   <button
                     type="button"
-                    :disabled="assetUploading || asset.pixelWidth <= 0"
+                    :disabled="assetUploading || backgroundRemovingAssetId !== null || asset.pixelWidth <= 0"
                     @click="() => addAssetToCanvas(asset)"
                   >
                     Add
+                  </button>
+                  <button
+                    v-if="!asset.uploaded"
+                    type="button"
+                    :disabled="assetUploading || backgroundRemovingAssetId !== null"
+                    @click="() => removeBackgroundFromAsset(asset)"
+                  >
+                    {{ backgroundRemovingAssetId === asset.id ? "Removing..." : "Remove background" }}
                   </button>
                   <button type="button" @click="removeAssetFromLibrary(asset.id)">
                     Remove

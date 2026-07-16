@@ -30,6 +30,12 @@ class ImageUploadController {
         return imageUploadService.store(file, authentication.getName());
     }
 
+    @PostMapping("/api/uploads/images/remove-background")
+    @ResponseStatus(HttpStatus.CREATED)
+    ImageUploadResponse removeBackground(@RequestPart("file") MultipartFile file, Authentication authentication) {
+        return imageUploadService.removeBackground(file, authentication.getName());
+    }
+
     @GetMapping("/uploads/images/{fileName}")
     ResponseEntity<Resource> readImage(@PathVariable String fileName, Authentication authentication) {
         var image = imageUploadService.loadOwnedImage(fileName, authentication.getName());

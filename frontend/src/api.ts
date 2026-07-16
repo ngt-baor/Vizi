@@ -530,6 +530,20 @@ export async function uploadImageAsset(file: File): Promise<ImageUploadResponse>
 }
 
 
+export async function removeBackgroundImageAsset(file: File): Promise<ImageUploadResponse> {
+  const form = new FormData();
+  form.set("file", file);
+  const response = await writeWithCsrf("/api/uploads/images/remove-background", "POST", form);
+  if (response.status === 401) {
+    throw new Error("Sign in to remove image backgrounds");
+  }
+  if (!response.ok) {
+    throw await authError(response, "Background removal failed: " + response.status);
+  }
+
+  return response.json() as Promise<ImageUploadResponse>;
+}
+
 export async function searchIcons8(
   term: string,
   language = "en",

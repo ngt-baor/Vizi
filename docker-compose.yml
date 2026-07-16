@@ -16,5 +16,22 @@ services:
       timeout: 5s
       retries: 5
 
+  background-removal:
+    build:
+      context: ./background-removal
+    environment:
+      REMBG_MODEL: ${BACKGROUND_REMOVAL_MODEL:-u2netp}
+      BACKGROUND_REMOVAL_SHARED_TOKEN: ${BACKGROUND_REMOVAL_SHARED_TOKEN:-}
+    ports:
+      - "7000:7000"
+    volumes:
+      - vizi-rembg-models:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
 volumes:
   vizi-postgres-data:
+  vizi-rembg-models:

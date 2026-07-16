@@ -3,6 +3,9 @@ package com.example.vizi.upload;
 import com.jayway.jsonpath.JsonPath;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -28,6 +31,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -51,6 +55,9 @@ class ImageUploadApiTests {
 
     @Autowired
     JdbcTemplate jdbcTemplate;
+
+    @MockitoBean
+    BackgroundRemovalClient backgroundRemovalClient;
 
     @DynamicPropertySource
     static void uploadProperties(DynamicPropertyRegistry registry) {
@@ -96,6 +103,8 @@ class ImageUploadApiTests {
                 insert into users(email, password_hash, full_name, role)
                 values ('other@example.test', '$2a$10$placeholderHash', 'Other', 'USER')
                 """);
+        when(backgroundRemovalClient.remove(any(byte[].class), anyString(), anyString()))
+                .thenReturn(pngBytes());
     }
 
     @AfterAll
@@ -168,6 +177,38 @@ class ImageUploadApiTests {
     }
 
     @Test
+    void authenticatedUserCanRemoveBackgroundAndReadReturnedPng() throws Exception {
+        var response = mockMvc.perform(multipart("/api/uploads/images/remove-background")
+                        .file(pngFile("portrait.png"))
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.contentType").value("image/png"))
+                .andExpect(jsonPath("$.fileName").value(org.hamcrest.Matchers.endsWith(".png")))
+                .andExpect(jsonPath("$.url").value(org.hamcrest.Matchers.startsWith("/uploads/images/")))
+                .andReturn();
+
+        String url = JsonPath.read(response.getResponse().getContentAsString(), "$.url");
+        Number assetId = JsonPath.read(response.getResponse().getContentAsString(), "$.assetId");
+        var metadata = jdbcTemplate.queryForMap("""
+                select a.type, a.mime_type, u.email
+                from assets a
+                join users u on u.id = a.user_id
+                where a.id = ?
+                """, assetId.longValue());
+        assertThat(metadata)
+                .containsEntry("type", "image")
+                .containsEntry("mime_type", "image/png")
+                .containsEntry("email", "owner@example.test");
+
+        mockMvc.perform(get(url).with(user("other@example.test")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get(url).with(user("owner@example.test")))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+    }
+
+    @Test
     void uploadRequiresAuthenticatedSessionAndCsrf() throws Exception {
         mockMvc.perform(multipart("/api/uploads/images")
                         .file(pngFile("logo.png"))
@@ -176,6 +217,16 @@ class ImageUploadApiTests {
 
         mockMvc.perform(multipart("/api/uploads/images")
                         .file(pngFile("logo.png"))
+                        .with(user("owner@example.test")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(multipart("/api/uploads/images/remove-background")
+                        .file(pngFile("portrait.png"))
+                        .with(csrf()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(multipart("/api/uploads/images/remove-background")
+                        .file(pngFile("portrait.png"))
                         .with(user("owner@example.test")))
                 .andExpect(status().isForbidden());
     }
