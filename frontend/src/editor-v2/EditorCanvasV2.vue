@@ -15,6 +15,11 @@ type LayerResizePayload = {
   height: number;
 };
 
+type LayerRotatePayload = {
+  layerId: string;
+  rotation: number;
+};
+
 type DragState = {
   layerId: string;
   pointerId: number;
@@ -43,6 +48,15 @@ type ResizeState = {
   canvasHeight: number;
 };
 
+type RotateState = {
+  layerId: string;
+  pointerId: number;
+  originRotation: number;
+  startAngle: number;
+  centerX: number;
+  centerY: number;
+};
+
 const props = defineProps<{
   document: EditorDocumentV2;
   page: EditorPageV2;
@@ -54,10 +68,12 @@ const emit = defineEmits<{
   "select-layer": [layerId: string | null];
   "move-layer": [payload: LayerMovePayload];
   "resize-layer": [payload: LayerResizePayload];
+  "rotate-layer": [payload: LayerRotatePayload];
 }>();
 
 const dragState = ref<DragState | null>(null);
 const resizeState = ref<ResizeState | null>(null);
+const rotateState = ref<RotateState | null>(null);
 
 const canvasStyle = computed<CSSProperties>(() => ({
   aspectRatio: `${props.document.card.widthMm} / ${props.document.card.heightMm}`,
@@ -214,9 +230,70 @@ function stopResizing(): void {
   resizeState.value = null;
 }
 
+function handleRotatePointerDown(event: PointerEvent, layer: EditorLayerV2): void {
+  if (layer.locked) return;
+
+  const target = event.currentTarget as HTMLElement;
+  const layerElement = target.closest("[data-layer-id]");
+  const layerRect = layerElement?.getBoundingClientRect();
+  if (!layerRect || layerRect.width <= 0 || layerRect.height <= 0) return;
+
+  const centerX = layerRect.left + layerRect.width / 2;
+  const centerY = layerRect.top + layerRect.height / 2;
+  rotateState.value = {
+    layerId: layer.id,
+    pointerId: event.pointerId,
+    originRotation: layer.rotation,
+    startAngle: pointerAngle(event.clientX, event.clientY, centerX, centerY),
+    centerX,
+    centerY,
+  };
+
+  target.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", handleRotatePointerMove);
+  window.addEventListener("pointerup", handleRotatePointerUp);
+  window.addEventListener("pointercancel", handleRotatePointerUp);
+  event.preventDefault();
+}
+
+function pointerAngle(clientX: number, clientY: number, centerX: number, centerY: number): number {
+  return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
+}
+
+function roundRotation(value: number): number {
+  const normalized = ((value % 360) + 360) % 360;
+  return Math.round(normalized * 10) / 10;
+}
+
+function handleRotatePointerMove(event: PointerEvent): void {
+  const state = rotateState.value;
+  if (!state || event.pointerId !== state.pointerId) return;
+
+  const currentAngle = pointerAngle(event.clientX, event.clientY, state.centerX, state.centerY);
+  let delta = currentAngle - state.startAngle;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  emit("rotate-layer", {
+    layerId: state.layerId,
+    rotation: roundRotation(state.originRotation + delta),
+  });
+}
+
+function handleRotatePointerUp(event: PointerEvent): void {
+  if (!rotateState.value || event.pointerId !== rotateState.value.pointerId) return;
+  stopRotating();
+}
+
+function stopRotating(): void {
+  window.removeEventListener("pointermove", handleRotatePointerMove);
+  window.removeEventListener("pointerup", handleRotatePointerUp);
+  window.removeEventListener("pointercancel", handleRotatePointerUp);
+  rotateState.value = null;
+}
 onBeforeUnmount(() => {
   stopDragging();
   stopResizing();
+  stopRotating();
 });
 </script>
 
@@ -239,6 +316,7 @@ onBeforeUnmount(() => {
           'v2-layer--selected': layer.id === props.selectedLayerId,
           'v2-layer--dragging': layer.id === dragState?.layerId,
           'v2-layer--resizing': layer.id === resizeState?.layerId,
+          'v2-layer--rotating': layer.id === rotateState?.layerId,
           'v2-layer--locked': layer.locked,
         },
       ]"
@@ -260,6 +338,15 @@ onBeforeUnmount(() => {
         :aria-label="`Resize ${layer.name}`"
         title="Resize layer"
         @pointerdown.stop="handleResizePointerDown($event, layer)"
+        @click.stop
+      />
+      <button
+        v-if="layer.id === props.selectedLayerId && !layer.locked"
+        class="v2-rotate-handle"
+        type="button"
+        :aria-label="`Rotate ${layer.name}`"
+        title="Rotate layer"
+        @pointerdown.stop="handleRotatePointerDown($event, layer)"
         @click.stop
       />
     </div>
@@ -297,6 +384,10 @@ onBeforeUnmount(() => {
   cursor: nwse-resize;
 }
 
+.v2-layer--rotating {
+  cursor: crosshair;
+}
+
 .v2-layer--locked {
   cursor: not-allowed;
 }
@@ -319,6 +410,21 @@ onBeforeUnmount(() => {
   background: #b4367d;
   box-shadow: 0 0 0 1px rgba(38, 38, 45, 0.32);
   cursor: nwse-resize;
+  touch-action: none;
+}
+
+.v2-rotate-handle {
+  position: absolute;
+  top: 2px;
+  left: calc(50% - 7px);
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #0d766d;
+  box-shadow: 0 0 0 1px rgba(38, 38, 45, 0.32);
+  cursor: crosshair;
   touch-action: none;
 }
 
