@@ -17,6 +17,12 @@ export type EditorLayerV2 = {
   locked: boolean;
   content?: string;
   src?: string;
+  assetId?: number;
+  storageKey?: string;
+  originalSrc?: string;
+  processedSrc?: string;
+  processedAssetId?: number;
+  processedStorageKey?: string;
   fill?: string;
   stroke?: string;
   strokeWidth?: number;

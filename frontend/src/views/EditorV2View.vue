@@ -44,6 +44,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
+import { apiBaseUrl, removeBackgroundImageAsset } from "../api";
 import {
   createEditorDocumentV2,
   readEditorDocumentV2,
@@ -79,6 +80,9 @@ const saveState = ref<"idle" | "saved" | "dirty">("idle");
 const imageInput = ref<HTMLInputElement | null>(null);
 const imageTargetLayerId = ref<string | null>(null);
 const draggedLayerId = ref<string | null>(null);
+const imageFileByLayer = new Map<string, File>();
+const backgroundRemovingLayerId = ref<string | null>(null);
+const backgroundRemovalError = ref("");
 
 const sides: EditorSide[] = ["front", "back"];
 const palettes = ["#15161b", "#ffffff", "#b4367d", "#f4c46d", "#0d766d", "#5b83d4"];
@@ -142,6 +146,10 @@ const canvasTools: Array<{ id: EditorTool; label: string; icon: Component }> = [
 
 function markDirty(): void {
   saveState.value = "dirty";
+}
+
+function backendAssetUrl(url: string): string {
+  return url.startsWith("/") ? apiBaseUrl + url : url;
 }
 
 function safeImageSource(value: string | undefined): string {
@@ -224,7 +232,7 @@ function clampPercent(value: number, max: number): number {
   return Math.min(Math.max(0, value), Math.max(0, max));
 }
 
-function addLayer(type: EditorLayerType, source?: string, overrides: Partial<EditorLayerV2> = {}): void {
+function addLayer(type: EditorLayerType, source?: string, overrides: Partial<EditorLayerV2> = {}): EditorLayerV2 {
   const sequence = String(Date.now());
   const offset = (activePage.value.layers.length % 4) * 3;
   const width = overrides.width ?? (type === "text" ? 46 : type === "image" ? 36 : 28);
@@ -247,6 +255,7 @@ function addLayer(type: EditorLayerType, source?: string, overrides: Partial<Edi
     cornerRadius: type === "rect" ? 2 : undefined,
     content: type === "text" ? "New text" : undefined,
     src: type === "image" ? source : undefined,
+    originalSrc: type === "image" ? source : undefined,
     fontFamily: type === "text" ? "Aptos, Segoe UI, sans-serif" : undefined,
     fontSize: type === "text" ? 18 : undefined,
     fontWeight: type === "text" ? 600 : undefined,
@@ -257,6 +266,7 @@ function addLayer(type: EditorLayerType, source?: string, overrides: Partial<Edi
   selectedLayerId.value = layer.id;
   activeTool.value = "select";
   markDirty();
+  return layer;
 }
 
 function addTextPreset(preset: TextPreset): void {
@@ -318,15 +328,60 @@ function handleImageFile(event: Event): void {
     const target = targetId ? activePage.value.layers.find((layer) => layer.id === targetId && layer.type === "image") : null;
     if (target) {
       target.src = source;
+      target.originalSrc = source;
+      target.processedSrc = undefined;
+      target.processedAssetId = undefined;
+      target.processedStorageKey = undefined;
       target.visible = true;
+      imageFileByLayer.set(target.id, file);
       selectedLayerId.value = target.id;
       markDirty();
     } else {
-      addLayer("image", source);
+      const layer = addLayer("image", source, { name: file.name });
+      imageFileByLayer.set(layer.id, file);
       activePanel.value = "uploads";
     }
   });
   reader.readAsDataURL(file);
+}
+
+async function removeBackgroundFromSelected(): Promise<void> {
+  const layer = selectedLayer.value;
+  if (!layer || layer.type !== "image" || backgroundRemovingLayerId.value) return;
+
+  const file = imageFileByLayer.get(layer.id);
+  backgroundRemovalError.value = "";
+  if (!file) {
+    backgroundRemovalError.value = "Re-upload this image before removing its background.";
+    return;
+  }
+
+  backgroundRemovingLayerId.value = layer.id;
+  try {
+    const processed = await removeBackgroundImageAsset(file);
+    const originalSource = layer.originalSrc ?? layer.src;
+    const processedSource = backendAssetUrl(processed.url);
+    layer.originalSrc = originalSource;
+    layer.processedSrc = processedSource;
+    layer.processedAssetId = processed.assetId;
+    layer.processedStorageKey = processed.storageKey;
+    layer.src = processedSource;
+    layer.name = layer.name.replace(/ \(no background\)$/, "") + " (no background)";
+    markDirty();
+  } catch (unknownError) {
+    backgroundRemovalError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot remove image background";
+  } finally {
+    backgroundRemovingLayerId.value = null;
+  }
+}
+
+function restoreOriginalImage(): void {
+  const layer = selectedLayer.value;
+  if (!layer || layer.type !== "image" || !layer.originalSrc) return;
+  layer.src = layer.originalSrc;
+  markDirty();
 }
 
 function activateTool(tool: EditorTool): void {
@@ -988,6 +1043,27 @@ onMounted(() => {
               <Upload :size="15" :stroke-width="1.8" aria-hidden="true" />
               <span>Replace image</span>
             </button>
+            <div class="editor-v2__image-actions">
+              <button
+                class="editor-v2__secondary-panel-action"
+                type="button"
+                :disabled="backgroundRemovingLayerId === selectedLayer.id"
+                @click="removeBackgroundFromSelected"
+              >
+                <ImageIcon :size="15" :stroke-width="1.8" aria-hidden="true" />
+                <span>{{ backgroundRemovingLayerId === selectedLayer.id ? "Removing background..." : "Remove background" }}</span>
+              </button>
+              <button
+                v-if="selectedLayer.processedSrc && selectedLayer.originalSrc && selectedLayer.src === selectedLayer.processedSrc"
+                class="editor-v2__text-action"
+                type="button"
+                @click="restoreOriginalImage"
+              >
+                Use original
+              </button>
+            </div>
+            <span v-if="selectedLayer.processedSrc" class="editor-v2__image-status">Background removed</span>
+            <span v-if="backgroundRemovalError" class="editor-v2__image-error">{{ backgroundRemovalError }}</span>
           </section>
 
           <section v-else class="editor-v2__inspector-section">
