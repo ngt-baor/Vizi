@@ -72,6 +72,7 @@ const props = defineProps<{
   page: EditorPageV2;
   zoom: number;
   selectedLayerId?: string | null;
+  showGuides?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -92,6 +93,16 @@ const canvasStyle = computed<CSSProperties>(() => ({
   aspectRatio: String(props.document.card.widthMm) + " / " + String(props.document.card.heightMm),
   background: props.page.background,
   transform: "scale(" + String(props.zoom / 100) + ")",
+}));
+
+const safeGuideStyle = computed<CSSProperties>(() => ({
+  inset: String((3 / props.document.card.heightMm) * 100) + "% "
+    + String((3 / props.document.card.widthMm) * 100) + "%",
+}));
+
+const bleedGuideStyle = computed<CSSProperties>(() => ({
+  inset: "-" + String((2 / props.document.card.heightMm) * 100) + "% -"
+    + String((2 / props.document.card.widthMm) * 100) + "%",
 }));
 
 function safeImageSource(src: string | undefined): string {
@@ -370,6 +381,11 @@ onBeforeUnmount(() => {
     data-editor-v2-canvas
     @click="emit('select-layer', null)"
   >
+    <template v-if="showGuides">
+      <div class="v2-print-guide v2-print-guide--bleed" :style="bleedGuideStyle" data-print-guide="bleed" aria-hidden="true" />
+      <div class="v2-print-guide v2-print-guide--safe" :style="safeGuideStyle" data-print-guide="safe" aria-hidden="true" />
+    </template>
+
     <div
       v-for="layer in page.layers"
       v-show="layer.visible"
@@ -481,6 +497,21 @@ onBeforeUnmount(() => {
   box-shadow: 0 20px 50px rgba(39, 40, 48, 0.18);
   transform-origin: center;
   transition: transform 160ms ease;
+}
+
+.v2-print-guide {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.v2-print-guide--bleed {
+  border: 1px dashed rgba(213, 78, 59, 0.9);
+}
+
+.v2-print-guide--safe {
+  border: 1px dashed rgba(0, 122, 87, 0.9);
 }
 
 .v2-layer {

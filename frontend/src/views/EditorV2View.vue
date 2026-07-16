@@ -76,6 +76,7 @@ const activePanel = ref<SidebarPanel>("elements");
 const activeTool = ref<EditorTool>("select");
 const selectedLayerId = ref<string | null>("front-title");
 const zoom = ref(100);
+const showPrintGuides = ref(true);
 const saveState = ref<"idle" | "saved" | "dirty" | "saving" | "loading" | "error">("idle");
 const saveError = ref("");
 const imageInput = ref<HTMLInputElement | null>(null);
@@ -990,6 +991,7 @@ onMounted(() => {
               :document="document"
               :page="activePage"
               :zoom="zoom"
+              :show-guides="showPrintGuides"
               :selected-layer-id="selectedLayerId"
               @select-layer="selectLayer"
               @move-layer="moveLayer"
@@ -1267,6 +1269,24 @@ onMounted(() => {
             <div class="editor-v2__page-dimensions">
               <label>W <input :value="document.card.widthMm" type="number" disabled></label>
               <label>H <input :value="document.card.heightMm" type="number" disabled></label>
+            </div>
+          </section>
+
+          <section class="editor-v2__inspector-section">
+            <div class="editor-v2__inspector-section-title">
+              <strong>Print guides</strong>
+              <span>Fixed</span>
+            </div>
+            <label class="editor-v2__guide-toggle">
+              <span>
+                <strong>Show guides</strong>
+                <small>2 mm bleed, 3 mm safe zone</small>
+              </span>
+              <input v-model="showPrintGuides" type="checkbox" aria-label="Show print guides">
+            </label>
+            <div class="editor-v2__guide-legend" aria-hidden="true">
+              <span><i class="bleed" />Bleed</span>
+              <span><i class="safe" />Safe zone</span>
             </div>
           </section>
 
@@ -2116,6 +2136,59 @@ a {
 .editor-v2__canvas-frame {
   display: grid;
   place-items: center;
+}
+
+.editor-v2__guide-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--sidebar-text);
+  cursor: pointer;
+}
+
+.editor-v2__guide-toggle > span {
+  display: grid;
+  gap: 2px;
+}
+
+.editor-v2__guide-toggle small {
+  color: var(--sidebar-muted);
+  font-size: 10px;
+}
+
+.editor-v2__guide-toggle input {
+  width: 34px;
+  height: 18px;
+  accent-color: var(--editor-accent);
+  cursor: pointer;
+}
+
+.editor-v2__guide-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 11px;
+  color: var(--sidebar-muted);
+  font-size: 10px;
+}
+
+.editor-v2__guide-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.editor-v2__guide-legend i {
+  width: 15px;
+  border-top: 1px dashed currentColor;
+}
+
+.editor-v2__guide-legend .bleed {
+  color: #d54e3b;
+}
+
+.editor-v2__guide-legend .safe {
+  color: #00825d;
 }
 
 .editor-v2__zoom {
