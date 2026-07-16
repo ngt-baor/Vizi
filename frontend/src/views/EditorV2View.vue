@@ -78,6 +78,7 @@ const activeTool = ref<EditorTool>("select");
 const selectedLayerId = ref<string | null>("front-title");
 const zoom = ref(100);
 const saveState = ref<"idle" | "saved" | "dirty">("idle");
+const imageInput = ref<HTMLInputElement | null>(null);
 
 const sides: EditorSide[] = ["front", "back"];
 
@@ -203,20 +204,82 @@ function handleLayerAction(payload: { layerId: string; action: EditorLayerAction
   saveState.value = "dirty";
 }
 
+function clampPercent(value: number, max: number): number {
+  return Math.min(Math.max(0, value), Math.max(0, max));
+}
+
+function addLayer(type: EditorLayerType, source?: string): void {
+  const sequence = String(Date.now());
+  const offset = (activePage.value.layers.length % 4) * 3;
+  const width = type === "text" ? 46 : type === "image" ? 36 : 28;
+  const height = type === "text" ? 14 : type === "image" ? 36 : 28;
+  const layer: EditorLayerV2 = {
+    id: activeSide.value + "-" + type + "-" + sequence,
+    name: type === "text" ? "Text" : type === "rect" ? "Rectangle" : type === "ellipse" ? "Ellipse" : "Image",
+    type,
+    x: clampPercent(50 - width / 2 + offset, 100 - width),
+    y: clampPercent(50 - height / 2 + offset, 100 - height),
+    width,
+    height,
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    fill: type === "ellipse" ? "#0d766d" : type === "rect" ? "#d9b979" : "#151817",
+    stroke: "#151817",
+    strokeWidth: type === "rect" || type === "ellipse" ? 0 : undefined,
+    cornerRadius: type === "rect" ? 2 : undefined,
+    content: type === "text" ? "New text" : undefined,
+    src: type === "image" ? source : undefined,
+    fontFamily: type === "text" ? "Aptos, Segoe UI, sans-serif" : undefined,
+    fontSize: type === "text" ? 18 : undefined,
+    fontWeight: type === "text" ? 600 : undefined,
+    textAlign: type === "text" ? "left" : undefined,
+  };
+  activePage.value.layers.push(layer);
+  selectedLayerId.value = layer.id;
+  activeTool.value = "select";
+  activePanel.value = type === "text" ? "text" : type === "image" ? "uploads" : "elements";
+  saveState.value = "dirty";
+}
+
+function openImagePicker(): void {
+  imageInput.value?.click();
+}
+
+function handleImageFile(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  activeTool.value = "select";
+  if (!file || !/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 5 * 1024 * 1024) return;
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    if (typeof reader.result === "string" && /^data:image\/(png|jpeg|webp|gif);base64,/.test(reader.result)) {
+      addLayer("image", reader.result);
+    }
+  });
+  reader.readAsDataURL(file);
+}
+
 function activateTool(tool: EditorTool): void {
   activeTool.value = tool;
   if (tool === "text") {
     activePanel.value = "text";
+    addLayer("text");
   } else if (tool === "image") {
     activePanel.value = "uploads";
+    openImagePicker();
   } else if (tool !== "select") {
     activePanel.value = "elements";
+    addLayer(tool);
   }
 }
 
 function activateShape(tool: EditorTool): void {
-  activeTool.value = tool;
   activePanel.value = "elements";
+  activateTool(tool);
 }
 
 function layerIcon(layer: EditorLayerV2): Component {
@@ -303,6 +366,14 @@ onMounted(() => {
 
 <template>
   <section class="editor-v2" data-editor-version="2">
+    <input
+      ref="imageInput"
+      class="editor-v2__file-input"
+      type="file"
+      accept="image/png,image/jpeg,image/webp,image/gif"
+      aria-label="Upload image"
+      @change="handleImageFile"
+    >
     <header class="editor-v2__header">
       <div class="editor-v2__header-left">
         <RouterLink class="editor-v2__back" to="/designs" aria-label="Back to drafts" title="Back to drafts">
@@ -671,6 +742,14 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.editor-v2__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .editor-v2 {
   --editor-ink: #26262d;
   --editor-muted: #777881;
