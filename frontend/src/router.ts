@@ -5,6 +5,7 @@ import AdminView from "./views/AdminView.vue";
 import CheckoutView from "./views/CheckoutView.vue";
 import DesignDetailView from "./views/DesignDetailView.vue";
 import DesignsView from "./views/DesignsView.vue";
+import EditorV2View from "./views/EditorV2View.vue";
 import OrderDetailView from "./views/OrderDetailView.vue";
 import TemplateDetailView from "./views/TemplateDetailView.vue";
 import TemplatesView from "./views/TemplatesView.vue";
@@ -40,7 +41,7 @@ export const router = createRouter({
     {
       path: "/editor/:designId",
       name: "editor",
-      component: DesignDetailView,
+      component: EditorV2View,
     },
     {
       path: "/checkout/:designId",

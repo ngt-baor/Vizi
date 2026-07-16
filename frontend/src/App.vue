@@ -24,7 +24,7 @@ const isEditorRoute = computed(() => route.name === "editor");
 const currentUser = ref<AuthUser | null>(null);
 
 async function refreshCurrentUser(): Promise<void> {
-  if (isEditorRoute.value) {
+  if (isEditorRoute.value || window.location.pathname.startsWith("/editor/")) {
     return;
   }
   try {
