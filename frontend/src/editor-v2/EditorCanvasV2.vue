@@ -7,6 +7,11 @@ const props = defineProps<{
   document: EditorDocumentV2;
   page: EditorPageV2;
   zoom: number;
+  selectedLayerId?: string | null;
+}>();
+
+const emit = defineEmits<{
+  "select-layer": [layerId: string | null];
 }>();
 
 const canvasStyle = computed<CSSProperties>(() => ({
@@ -47,15 +52,20 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
     :style="canvasStyle"
     :aria-label="`${page.name} card canvas`"
     data-editor-v2-canvas
+    @click="emit('select-layer', null)"
   >
     <div
       v-for="layer in page.layers"
       v-show="layer.visible"
       :key="layer.id"
       class="v2-layer"
-      :class="`v2-layer--${layer.type}`"
+      :class="[
+        `v2-layer--${layer.type}`,
+        { 'v2-layer--selected': layer.id === props.selectedLayerId },
+      ]"
       :style="layerStyle(layer)"
       :data-layer-id="layer.id"
+      @click.stop="emit('select-layer', layer.id)"
     >
       <span v-if="layer.type === 'text'">{{ layer.content ?? "" }}</span>
       <img
@@ -70,12 +80,12 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
 <style scoped>
 .v2-canvas {
   position: relative;
-  width: min(720px, calc(100vw - 650px));
+  width: min(720px, calc(100vw - 690px));
   min-width: 360px;
   overflow: hidden;
-  border: 1px solid rgba(24, 29, 27, 0.16);
-  border-radius: 2px;
-  box-shadow: 0 28px 80px rgba(32, 38, 35, 0.2);
+  border: 1px solid rgba(31, 33, 40, 0.18);
+  border-radius: 3px;
+  box-shadow: 0 20px 50px rgba(39, 40, 48, 0.18);
   transform-origin: center;
   transition: transform 160ms ease;
 }
@@ -84,6 +94,12 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
   position: absolute;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.v2-layer--selected {
+  outline: 2px solid #b4367d;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.92);
 }
 
 .v2-layer--text {
@@ -104,16 +120,16 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
   object-fit: cover;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .v2-canvas {
-    width: min(640px, calc(100vw - 520px));
+    width: min(640px, calc(100vw - 620px));
     min-width: 320px;
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .v2-canvas {
-    width: min(88vw, 680px);
+    width: min(78vw, 680px);
     min-width: 0;
   }
 }
