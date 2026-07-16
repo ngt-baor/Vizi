@@ -18,9 +18,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.math.BigDecimal;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.UUID;
 
 import com.jayway.jsonpath.JsonPath;
+
+import tools.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -345,6 +348,60 @@ class DesignApiIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
         assertThat(designSnapshotRepository.countByDesign_Id(designId.longValue())).isZero();
+    }
+
+    @Test
+    void ownerCanSaveV2FrontAndBackCanvasThroughApi() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        var template = templateRepository.save(new Template(
+                "V2 API Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[]}",
+                true
+        ));
+        var createResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createResponse.getResponse().getContentAsString(), "$.id");
+        String canvasJson = """
+                {
+                  "schemaVersion": 2,
+                  "documentId": "%s",
+                  "pages": {
+                    "front": {"id": "front", "layers": [{"id": "front-title", "type": "text", "content": "Front API"}]},
+                    "back": {"id": "back", "layers": [{"id": "back-title", "type": "text", "content": "Back API"}]}
+                  }
+                }
+                """.formatted(designId);
+        String requestJson = new ObjectMapper().writeValueAsString(Map.of(
+                "name", "Saved V2 API Card",
+                "canvasJson", canvasJson
+        ));
+
+        var updateResponse = mockMvc.perform(put("/api/designs/" + designId)
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Saved V2 API Card"))
+                .andReturn();
+        String savedCanvas = JsonPath.read(updateResponse.getResponse().getContentAsString(), "$.canvasJson");
+        assertThat((String) JsonPath.read(savedCanvas, "$.pages.front.layers[0].content")).isEqualTo("Front API");
+        assertThat((String) JsonPath.read(savedCanvas, "$.pages.back.layers[0].content")).isEqualTo("Back API");
+
+        var getResponse = mockMvc.perform(get("/api/designs/" + designId)
+                        .with(user("owner@example.test")))
+                .andExpect(status().isOk())
+                .andReturn();
+        String loadedCanvas = JsonPath.read(getResponse.getResponse().getContentAsString(), "$.canvasJson");
+        assertThat((String) JsonPath.read(loadedCanvas, "$.pages.front.layers[0].content")).isEqualTo("Front API");
+        assertThat((String) JsonPath.read(loadedCanvas, "$.pages.back.layers[0].content")).isEqualTo("Back API");
     }
 
     @Test

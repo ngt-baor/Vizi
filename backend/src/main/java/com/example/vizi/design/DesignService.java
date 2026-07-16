@@ -133,8 +133,43 @@ public class DesignService {
     private void validateCanvas(String canvasJson) {
         try {
             var canvas = objectMapper.readTree(canvasJson);
-            var layers = canvas.get("layers");
-            if (!canvas.isObject() || layers == null || !layers.isArray() || layers.size() > 500) {
+            if (!canvas.isObject()) {
+                throw new IllegalArgumentException("Canvas JSON must be an object");
+            }
+
+            var legacyLayers = canvas.get("layers");
+            if (legacyLayers != null) {
+                if (!legacyLayers.isArray() || legacyLayers.size() > 500) {
+                    throw new IllegalArgumentException("Canvas must contain at most 500 layers");
+                }
+                return;
+            }
+
+            var schemaVersion = canvas.get("schemaVersion");
+            var pages = canvas.get("pages");
+            var front = pages == null ? null : pages.get("front");
+            var back = pages == null ? null : pages.get("back");
+            var frontLayers = front == null ? null : front.get("layers");
+            var backLayers = back == null ? null : back.get("layers");
+            boolean validV2 = schemaVersion != null
+                    && schemaVersion.isIntegralNumber() && schemaVersion.intValue() == 2
+                    && pages != null
+                    && pages.isObject()
+                    && pages.size() == 2
+                    && front != null
+                    && front.isObject()
+                    && front.get("id") != null && front.get("id").isString() && "front".equals(front.get("id").stringValue())
+                    && back != null
+                    && back.isObject()
+                    && back.get("id") != null && back.get("id").isString() && "back".equals(back.get("id").stringValue())
+                    && frontLayers != null
+                    && frontLayers.isArray()
+                    && backLayers != null
+                    && backLayers.isArray();
+            if (!validV2) {
+                throw new IllegalArgumentException("Canvas must contain a layers array or V2 front/back pages");
+            }
+            if (frontLayers.size() + backLayers.size() > 500) {
                 throw new IllegalArgumentException("Canvas must contain at most 500 layers");
             }
         } catch (IllegalArgumentException exception) {

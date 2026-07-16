@@ -44,7 +44,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
-import { apiBaseUrl, removeBackgroundImageAsset } from "../api";
+import { apiBaseUrl, getDesign, removeBackgroundImageAsset, updateDesign } from "../api";
 import {
   createEditorDocumentV2,
   readEditorDocumentV2,
@@ -76,13 +76,26 @@ const activePanel = ref<SidebarPanel>("elements");
 const activeTool = ref<EditorTool>("select");
 const selectedLayerId = ref<string | null>("front-title");
 const zoom = ref(100);
-const saveState = ref<"idle" | "saved" | "dirty">("idle");
+const saveState = ref<"idle" | "saved" | "dirty" | "saving" | "loading" | "error">("idle");
+const saveError = ref("");
 const imageInput = ref<HTMLInputElement | null>(null);
 const imageTargetLayerId = ref<string | null>(null);
 const draggedLayerId = ref<string | null>(null);
 const imageFileByLayer = new Map<string, File>();
 const backgroundRemovingLayerId = ref<string | null>(null);
 const backgroundRemovalError = ref("");
+const backendDesignId = computed(() => {
+  const value = Number(documentId.value);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+});
+const statusText = computed(() => {
+  if (saveState.value === "loading") return "Loading draft...";
+  if (saveState.value === "saving") return "Saving draft...";
+  if (saveState.value === "error") return saveError.value || "Draft sync failed";
+  if (saveState.value === "saved") return backendDesignId.value ? "Saved to draft" : "Saved locally";
+  if (saveState.value === "dirty") return "Unsaved changes";
+  return backendDesignId.value ? "Draft loaded" : "All changes saved";
+});
 
 const sides: EditorSide[] = ["front", "back"];
 const palettes = ["#15161b", "#ffffff", "#b4367d", "#f4c46d", "#0d766d", "#5b83d4"];
@@ -145,6 +158,7 @@ const canvasTools: Array<{ id: EditorTool; label: string; icon: Component }> = [
 ];
 
 function markDirty(): void {
+  saveError.value = "";
   saveState.value = "dirty";
 }
 
@@ -567,13 +581,76 @@ function dropLayerBefore(targetLayerId: string): void {
   markDirty();
 }
 
-function saveLocally(): void {
-  document.value.updatedAt = new Date().toISOString();
+function cacheDocument(): void {
   localStorage.setItem(storageKey.value, JSON.stringify(document.value));
+}
+
+function finishSavedState(): void {
   saveState.value = "saved";
   window.setTimeout(() => {
-    saveState.value = "idle";
+    if (saveState.value === "saved") saveState.value = "idle";
   }, 1800);
+}
+
+async function saveDraft(): Promise<void> {
+  if (saveState.value === "saving" || saveState.value === "loading") return;
+
+  document.value.updatedAt = new Date().toISOString();
+  cacheDocument();
+  const designId = backendDesignId.value;
+  if (!designId) {
+    finishSavedState();
+    return;
+  }
+
+  saveError.value = "";
+  saveState.value = "saving";
+  try {
+    const saved = await updateDesign(designId, document.value.name, JSON.stringify(document.value));
+    document.value.name = saved.name;
+    cacheDocument();
+    finishSavedState();
+  } catch (unknownError) {
+    saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot save draft";
+    saveState.value = "error";
+  }
+}
+
+async function loadInitialDocument(): Promise<void> {
+  const stored = readEditorDocumentV2(localStorage.getItem(storageKey.value));
+  const localDocument = stored?.documentId === documentId.value ? stored : null;
+  const designId = backendDesignId.value;
+  if (!designId) {
+    if (localDocument) document.value = localDocument;
+    selectedLayerId.value = null;
+    return;
+  }
+
+  saveState.value = "loading";
+  saveError.value = "";
+  try {
+    const design = await getDesign(designId);
+    const remoteDocument = readEditorDocumentV2(design.canvasJson);
+    const nextDocument = remoteDocument?.documentId === documentId.value
+      ? remoteDocument
+      : localDocument ?? createEditorDocumentV2(documentId.value);
+    nextDocument.name = design.name;
+    if (Number.isFinite(design.widthMm) && design.widthMm > 0) {
+      nextDocument.card.widthMm = design.widthMm;
+    }
+    if (Number.isFinite(design.heightMm) && design.heightMm > 0) {
+      nextDocument.card.heightMm = design.heightMm;
+    }
+    document.value = nextDocument;
+    cacheDocument();
+    saveState.value = remoteDocument?.documentId === documentId.value ? "idle" : "dirty";
+  } catch (unknownError) {
+    if (localDocument) document.value = localDocument;
+    saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot load draft";
+    saveState.value = "error";
+  } finally {
+    selectedLayerId.value = null;
+  }
 }
 
 watch(activeSide, () => {
@@ -582,11 +659,7 @@ watch(activeSide, () => {
 });
 
 onMounted(() => {
-  const stored = readEditorDocumentV2(localStorage.getItem(storageKey.value));
-  if (stored?.documentId === documentId.value) {
-    document.value = stored;
-    selectedLayerId.value = null;
-  }
+  void loadInitialDocument();
 });
 </script>
 
@@ -622,7 +695,7 @@ onMounted(() => {
           <Redo2 :size="17" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <span class="editor-v2__status-dot" aria-hidden="true" />
-        <span class="editor-v2__status">{{ saveState === "saved" ? "Saved locally" : saveState === "dirty" ? "Unsaved changes" : "All changes saved" }}</span>
+        <span class="editor-v2__status" role="status" aria-live="polite">{{ statusText }}</span>
       </div>
 
       <div class="editor-v2__header-actions">
@@ -648,9 +721,14 @@ onMounted(() => {
           <Share2 :size="15" :stroke-width="1.8" aria-hidden="true" />
           <span>Share</span>
         </button>
-        <button class="editor-v2__save" type="button" @click="saveLocally">
+        <button
+          class="editor-v2__save"
+          type="button"
+          :disabled="saveState === 'saving' || saveState === 'loading'"
+          @click="saveDraft"
+        >
           <Save :size="15" :stroke-width="1.8" aria-hidden="true" />
-          <span>Save</span>
+          <span>{{ saveState === "saving" ? "Saving" : "Save" }}</span>
         </button>
       </div>
     </header>
@@ -1459,6 +1537,11 @@ a {
 
 .editor-v2__save:hover {
   background: var(--editor-accent-hover);
+}
+
+.editor-v2__save:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .editor-v2__layout {
