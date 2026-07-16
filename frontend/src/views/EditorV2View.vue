@@ -76,7 +76,7 @@ const activePanel = ref<SidebarPanel>("elements");
 const activeTool = ref<EditorTool>("select");
 const selectedLayerId = ref<string | null>("front-title");
 const zoom = ref(100);
-const saveState = ref<"idle" | "saved">("idle");
+const saveState = ref<"idle" | "saved" | "dirty">("idle");
 
 const sides: EditorSide[] = ["front", "back"];
 
@@ -138,6 +138,14 @@ function selectLayer(layerId: string | null): void {
   if (layerId) {
     activePanel.value = "layers";
   }
+}
+
+function moveLayer(payload: { layerId: string; x: number; y: number }): void {
+  const layer = activePage.value.layers.find((item) => item.id === payload.layerId);
+  if (!layer || layer.locked) return;
+  layer.x = payload.x;
+  layer.y = payload.y;
+  saveState.value = "dirty";
 }
 
 function activateTool(tool: EditorTool): void {
@@ -262,7 +270,7 @@ onMounted(() => {
           <Redo2 :size="17" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <span class="editor-v2__status-dot" aria-hidden="true" />
-        <span class="editor-v2__status">{{ saveState === "saved" ? "Saved locally" : "All changes saved" }}</span>
+        <span class="editor-v2__status">{{ saveState === "saved" ? "Saved locally" : saveState === "dirty" ? "Unsaved changes" : "All changes saved" }}</span>
       </div>
 
       <div class="editor-v2__header-actions">
@@ -454,6 +462,7 @@ onMounted(() => {
               :zoom="zoom"
               :selected-layer-id="selectedLayerId"
               @select-layer="selectLayer"
+              @move-layer="moveLayer"
             />
           </div>
         </div>

@@ -1,7 +1,28 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import type { CSSProperties } from "vue";
 import type { EditorDocumentV2, EditorLayerV2, EditorPageV2 } from "./document";
+
+type LayerMovePayload = {
+  layerId: string;
+  x: number;
+  y: number;
+};
+
+type DragState = {
+  layerId: string;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  originX: number;
+  originY: number;
+  layerWidth: number;
+  layerHeight: number;
+  canvasLeft: number;
+  canvasTop: number;
+  canvasWidth: number;
+  canvasHeight: number;
+};
 
 const props = defineProps<{
   document: EditorDocumentV2;
@@ -12,7 +33,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "select-layer": [layerId: string | null];
+  "move-layer": [payload: LayerMovePayload];
 }>();
+
+const dragState = ref<DragState | null>(null);
 
 const canvasStyle = computed<CSSProperties>(() => ({
   aspectRatio: `${props.document.card.widthMm} / ${props.document.card.heightMm}`,
@@ -44,6 +68,75 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
     textAlign: layer.textAlign,
   };
 }
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundPosition(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function handlePointerDown(event: PointerEvent, layer: EditorLayerV2): void {
+  emit("select-layer", layer.id);
+  const target = event.currentTarget as HTMLElement;
+  if (layer.locked) {
+    target.setPointerCapture?.(event.pointerId);
+    return;
+  }
+
+  const canvas = target.closest("[data-editor-v2-canvas]");
+  const canvasRect = canvas?.getBoundingClientRect();
+  if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return;
+
+  dragState.value = {
+    layerId: layer.id,
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    originX: layer.x,
+    originY: layer.y,
+    layerWidth: layer.width,
+    layerHeight: layer.height,
+    canvasLeft: canvasRect.left,
+    canvasTop: canvasRect.top,
+    canvasWidth: canvasRect.width,
+    canvasHeight: canvasRect.height,
+  };
+
+  target.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", handlePointerMove);
+  window.addEventListener("pointerup", handlePointerUp);
+  window.addEventListener("pointercancel", handlePointerUp);
+  event.preventDefault();
+}
+
+function handlePointerMove(event: PointerEvent): void {
+  const state = dragState.value;
+  if (!state || event.pointerId !== state.pointerId) return;
+
+  const deltaX = ((event.clientX - state.startClientX) / state.canvasWidth) * 100;
+  const deltaY = ((event.clientY - state.startClientY) / state.canvasHeight) * 100;
+  emit("move-layer", {
+    layerId: state.layerId,
+    x: roundPosition(clamp(state.originX + deltaX, 0, 100 - state.layerWidth)),
+    y: roundPosition(clamp(state.originY + deltaY, 0, 100 - state.layerHeight)),
+  });
+}
+
+function handlePointerUp(event: PointerEvent): void {
+  if (!dragState.value || event.pointerId !== dragState.value.pointerId) return;
+  stopDragging();
+}
+
+function stopDragging(): void {
+  window.removeEventListener("pointermove", handlePointerMove);
+  window.removeEventListener("pointerup", handlePointerUp);
+  window.removeEventListener("pointercancel", handlePointerUp);
+  dragState.value = null;
+}
+
+onBeforeUnmount(stopDragging);
 </script>
 
 <template>
@@ -61,10 +154,15 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
       class="v2-layer"
       :class="[
         `v2-layer--${layer.type}`,
-        { 'v2-layer--selected': layer.id === props.selectedLayerId },
+        {
+          'v2-layer--selected': layer.id === props.selectedLayerId,
+          'v2-layer--dragging': layer.id === dragState?.layerId,
+          'v2-layer--locked': layer.locked,
+        },
       ]"
       :style="layerStyle(layer)"
       :data-layer-id="layer.id"
+      @pointerdown.stop="handlePointerDown($event, layer)"
       @click.stop="emit('select-layer', layer.id)"
     >
       <span v-if="layer.type === 'text'">{{ layer.content ?? "" }}</span>
@@ -94,6 +192,18 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
   position: absolute;
   box-sizing: border-box;
   overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.v2-layer--dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.v2-layer--locked {
+  cursor: not-allowed;
 }
 
 .v2-layer--selected {
