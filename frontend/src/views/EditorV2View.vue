@@ -148,6 +148,14 @@ function moveLayer(payload: { layerId: string; x: number; y: number }): void {
   saveState.value = "dirty";
 }
 
+function resizeLayer(payload: { layerId: string; width: number; height: number }): void {
+  const layer = activePage.value.layers.find((item) => item.id === payload.layerId);
+  if (!layer || layer.locked) return;
+  layer.width = payload.width;
+  layer.height = payload.height;
+  saveState.value = "dirty";
+}
+
 function activateTool(tool: EditorTool): void {
   activeTool.value = tool;
   if (tool === "text") {
@@ -463,6 +471,7 @@ onMounted(() => {
               :selected-layer-id="selectedLayerId"
               @select-layer="selectLayer"
               @move-layer="moveLayer"
+              @resize-layer="resizeLayer"
             />
           </div>
         </div>

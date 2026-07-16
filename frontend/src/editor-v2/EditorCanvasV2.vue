@@ -9,6 +9,12 @@ type LayerMovePayload = {
   y: number;
 };
 
+type LayerResizePayload = {
+  layerId: string;
+  width: number;
+  height: number;
+};
+
 type DragState = {
   layerId: string;
   pointerId: number;
@@ -24,6 +30,19 @@ type DragState = {
   canvasHeight: number;
 };
 
+type ResizeState = {
+  layerId: string;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  originWidth: number;
+  originHeight: number;
+  layerX: number;
+  layerY: number;
+  canvasWidth: number;
+  canvasHeight: number;
+};
+
 const props = defineProps<{
   document: EditorDocumentV2;
   page: EditorPageV2;
@@ -34,9 +53,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   "select-layer": [layerId: string | null];
   "move-layer": [payload: LayerMovePayload];
+  "resize-layer": [payload: LayerResizePayload];
 }>();
 
 const dragState = ref<DragState | null>(null);
+const resizeState = ref<ResizeState | null>(null);
 
 const canvasStyle = computed<CSSProperties>(() => ({
   aspectRatio: `${props.document.card.widthMm} / ${props.document.card.heightMm}`,
@@ -136,7 +157,67 @@ function stopDragging(): void {
   dragState.value = null;
 }
 
-onBeforeUnmount(stopDragging);
+function handleResizePointerDown(event: PointerEvent, layer: EditorLayerV2): void {
+  if (layer.locked) return;
+
+  const target = event.currentTarget as HTMLElement;
+  const canvas = target.closest("[data-editor-v2-canvas]");
+  const canvasRect = canvas?.getBoundingClientRect();
+  if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return;
+
+  resizeState.value = {
+    layerId: layer.id,
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    originWidth: layer.width,
+    originHeight: layer.height,
+    layerX: layer.x,
+    layerY: layer.y,
+    canvasWidth: canvasRect.width,
+    canvasHeight: canvasRect.height,
+  };
+
+  target.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", handleResizePointerMove);
+  window.addEventListener("pointerup", handleResizePointerUp);
+  window.addEventListener("pointercancel", handleResizePointerUp);
+  event.preventDefault();
+}
+
+function handleResizePointerMove(event: PointerEvent): void {
+  const state = resizeState.value;
+  if (!state || event.pointerId !== state.pointerId) return;
+
+  const maxWidth = Math.max(0.1, 100 - state.layerX);
+  const maxHeight = Math.max(0.1, 100 - state.layerY);
+  const minWidth = Math.min(2, maxWidth);
+  const minHeight = Math.min(2, maxHeight);
+  const deltaWidth = ((event.clientX - state.startClientX) / state.canvasWidth) * 100;
+  const deltaHeight = ((event.clientY - state.startClientY) / state.canvasHeight) * 100;
+  emit("resize-layer", {
+    layerId: state.layerId,
+    width: roundPosition(clamp(state.originWidth + deltaWidth, minWidth, maxWidth)),
+    height: roundPosition(clamp(state.originHeight + deltaHeight, minHeight, maxHeight)),
+  });
+}
+
+function handleResizePointerUp(event: PointerEvent): void {
+  if (!resizeState.value || event.pointerId !== resizeState.value.pointerId) return;
+  stopResizing();
+}
+
+function stopResizing(): void {
+  window.removeEventListener("pointermove", handleResizePointerMove);
+  window.removeEventListener("pointerup", handleResizePointerUp);
+  window.removeEventListener("pointercancel", handleResizePointerUp);
+  resizeState.value = null;
+}
+
+onBeforeUnmount(() => {
+  stopDragging();
+  stopResizing();
+});
 </script>
 
 <template>
@@ -157,6 +238,7 @@ onBeforeUnmount(stopDragging);
         {
           'v2-layer--selected': layer.id === props.selectedLayerId,
           'v2-layer--dragging': layer.id === dragState?.layerId,
+          'v2-layer--resizing': layer.id === resizeState?.layerId,
           'v2-layer--locked': layer.locked,
         },
       ]"
@@ -171,6 +253,15 @@ onBeforeUnmount(stopDragging);
         :src="safeImageSource(layer.src)"
         :alt="layer.name"
       >
+      <button
+        v-if="layer.id === props.selectedLayerId && !layer.locked"
+        class="v2-resize-handle"
+        type="button"
+        :aria-label="`Resize ${layer.name}`"
+        title="Resize layer"
+        @pointerdown.stop="handleResizePointerDown($event, layer)"
+        @click.stop
+      />
     </div>
   </div>
 </template>
@@ -202,6 +293,10 @@ onBeforeUnmount(stopDragging);
   transition: none;
 }
 
+.v2-layer--resizing {
+  cursor: nwse-resize;
+}
+
 .v2-layer--locked {
   cursor: not-allowed;
 }
@@ -210,6 +305,21 @@ onBeforeUnmount(stopDragging);
   outline: 2px solid #b4367d;
   outline-offset: 2px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.92);
+}
+
+.v2-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 2px;
+  background: #b4367d;
+  box-shadow: 0 0 0 1px rgba(38, 38, 45, 0.32);
+  cursor: nwse-resize;
+  touch-action: none;
 }
 
 .v2-layer--text {
