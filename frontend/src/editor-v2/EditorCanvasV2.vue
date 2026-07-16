@@ -473,7 +473,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .v2-canvas {
   position: relative;
-  width: min(720px, calc(100vw - 690px));
+  width: min(720px, calc(100vw - 780px));
   min-width: 360px;
   overflow: visible;
   border: 1px solid rgba(31, 33, 40, 0.18);
@@ -703,7 +703,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1180px) {
   .v2-canvas {
-    width: min(640px, calc(100vw - 620px));
+    width: min(640px, calc(100vw - 670px));
     min-width: 320px;
   }
 }
