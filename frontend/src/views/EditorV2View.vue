@@ -59,6 +59,7 @@ import {
 } from "../editor-v2/document";
 
 type EditorTool = "select" | "text" | "rect" | "ellipse" | "image";
+type EditorLayerAction = "duplicate" | "toggle-lock" | "bring-forward" | "send-backward" | "delete";
 type SidebarPanel = "elements" | "text" | "ai" | "uploads" | "stock" | "apps" | "brand" | "layers";
 
 type IconItem = {
@@ -148,9 +149,11 @@ function moveLayer(payload: { layerId: string; x: number; y: number }): void {
   saveState.value = "dirty";
 }
 
-function resizeLayer(payload: { layerId: string; width: number; height: number }): void {
+function resizeLayer(payload: { layerId: string; x: number; y: number; width: number; height: number }): void {
   const layer = activePage.value.layers.find((item) => item.id === payload.layerId);
   if (!layer || layer.locked) return;
+  layer.x = payload.x;
+  layer.y = payload.y;
   layer.width = payload.width;
   layer.height = payload.height;
   saveState.value = "dirty";
@@ -160,6 +163,43 @@ function rotateLayer(payload: { layerId: string; rotation: number }): void {
   const layer = activePage.value.layers.find((item) => item.id === payload.layerId);
   if (!layer || layer.locked) return;
   layer.rotation = payload.rotation;
+  saveState.value = "dirty";
+}
+
+function handleLayerAction(payload: { layerId: string; action: EditorLayerAction }): void {
+  const layers = activePage.value.layers;
+  const index = layers.findIndex((layer) => layer.id === payload.layerId);
+  const layer = layers[index];
+  if (!layer) return;
+
+  if (payload.action === "toggle-lock") {
+    layer.locked = !layer.locked;
+    saveState.value = "dirty";
+    return;
+  }
+  if (layer.locked) return;
+
+  if (payload.action === "duplicate") {
+    const duplicate: EditorLayerV2 = { ...layer };
+    duplicate.id = layer.id + "-copy-" + String(Date.now());
+    duplicate.name = layer.name + " copy";
+    duplicate.x = Math.min(Math.max(0, 100 - duplicate.width), layer.x + 2);
+    duplicate.y = Math.min(Math.max(0, 100 - duplicate.height), layer.y + 2);
+    layers.splice(index + 1, 0, duplicate);
+    selectedLayerId.value = duplicate.id;
+  } else if (payload.action === "bring-forward" && index < layers.length - 1) {
+    layers.splice(index + 1, 0, layers.splice(index, 1)[0]);
+  } else if (payload.action === "send-backward" && index > 0) {
+    layers.splice(index - 1, 0, layers.splice(index, 1)[0]);
+  } else if (payload.action === "delete") {
+    layers.splice(index, 1);
+    selectedLayerId.value = layers.find((item) => item.type === "text" && item.visible)?.id
+      ?? layers.find((item) => item.visible)?.id
+      ?? null;
+  } else {
+    return;
+  }
+
   saveState.value = "dirty";
 }
 
@@ -480,6 +520,7 @@ onMounted(() => {
               @move-layer="moveLayer"
               @resize-layer="resizeLayer"
               @rotate-layer="rotateLayer"
+              @layer-action="handleLayerAction"
             />
           </div>
         </div>
