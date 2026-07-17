@@ -209,6 +209,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
           v-if="layer.type === 'image' && layerImageSource(layer)"
           :src="layerImageSource(layer)"
           :alt="layerText(layer)"
+          crossorigin="anonymous"
           loading="lazy"
           referrerpolicy="no-referrer"
           draggable="false"

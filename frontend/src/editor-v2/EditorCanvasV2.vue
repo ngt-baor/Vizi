@@ -411,6 +411,7 @@ onBeforeUnmount(() => {
           v-else-if="layer.type === 'image' && safeImageSource(layer.src)"
           :src="safeImageSource(layer.src)"
           :alt="layer.name"
+          crossorigin="anonymous"
         >
       </div>
     </div>

@@ -540,6 +540,7 @@ function safeImageSource(value: string | undefined): string {
 function readImagePixelSize(source: string): Promise<{ pixelWidth?: number; pixelHeight?: number }> {
   return new Promise((resolve) => {
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.addEventListener("load", () => resolve({
       pixelWidth: image.naturalWidth,
       pixelHeight: image.naturalHeight,
@@ -852,7 +853,7 @@ function mapStockApiAsset(asset: StockApiAsset): StockAsset {
     title: asset.title,
     kind,
     collection: asset.collection || "Openverse",
-    previewUrl: asset.previewUrl,
+    previewUrl: backendAssetUrl(asset.previewUrl),
     sourceUrl: asset.sourceUrl,
     tags: asset.tags,
     credit: asset.credit,
@@ -2116,7 +2117,7 @@ onBeforeUnmount(() => {
           :title="'Add ' + asset.title"
           @click="addStockAsset(asset)"
         >
-          <img :src="asset.previewUrl" :alt="asset.title" loading="lazy">
+          <img :src="asset.previewUrl" :alt="asset.title" crossorigin="anonymous" loading="lazy">
           <span
             class="editor-v2__stock-favorite"
             :class="{ active: stockFavorites.includes(asset.id) }"

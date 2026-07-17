@@ -21,6 +21,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 class RateLimitFilter extends OncePerRequestFilter {
 
+    private static final Limit STOCK_IMAGE_LIMIT = new Limit(120, Duration.ofMinutes(1));
     private static final Map<String, Limit> LIMITS = Map.of(
             "POST /api/auth/login", new Limit(10, Duration.ofMinutes(1)),
             "POST /api/auth/register", new Limit(20, Duration.ofMinutes(1)),
@@ -49,13 +50,20 @@ class RateLimitFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         var route = request.getMethod() + " " + request.getRequestURI();
+        var limitRoute = route;
         var limit = LIMITS.get(route);
+        if (limit == null
+                && "GET".equals(request.getMethod())
+                && request.getRequestURI().startsWith("/api/stock/images/")) {
+            limitRoute = "GET /api/stock/images";
+            limit = STOCK_IMAGE_LIMIT;
+        }
         if (limit == null) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        if (!allow(clientKey(request, route), limit)) {
+        if (!allow(clientKey(request, limitRoute), limit)) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.getWriter().write("{\"status\":429,\"error\":\"Too Many Requests\",\"message\":\"Too many requests\"}");

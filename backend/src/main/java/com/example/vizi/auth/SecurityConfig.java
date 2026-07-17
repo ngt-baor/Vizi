@@ -44,7 +44,7 @@ class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .addFilterAfter(rateLimitFilter, CsrfFilter.class)
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.GET, "/api/health", "/api/templates/**", "/api/icons8/search", "/api/stock/search", "/api/auth/csrf")
+                        .requestMatchers(HttpMethod.GET, "/api/health", "/api/templates/**", "/api/icons8/search", "/api/stock/search", "/api/stock/images/**", "/api/auth/csrf")
                         .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login")
                         .permitAll()

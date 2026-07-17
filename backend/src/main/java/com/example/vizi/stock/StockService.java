@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -33,12 +34,16 @@ class StockService {
     private static final int MAX_PAGE = 500;
     private static final int MAX_PAGE_SIZE = 48;
     private static final int MAX_CACHE_ENTRIES = 100;
+    private static final int MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+    private static final int MAX_IMAGE_CACHE_ENTRIES = 200;
     private static final Duration CACHE_TTL = Duration.ofMinutes(10);
+    private static final Duration IMAGE_CACHE_TTL = Duration.ofHours(1);
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String openverseBaseUrl;
     private final ConcurrentMap<String, CachedPage> cache = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, CachedImage> imageCache = new ConcurrentHashMap<>();
 
     @Autowired
     StockService(
@@ -103,6 +108,75 @@ class StockService {
         }
     }
 
+    StockImage image(String id) {
+        var cleanId = normalizeImageId(id);
+        var cached = imageCache.get(cleanId);
+        if (cached != null && cached.expiresAt().isAfter(Instant.now())) {
+            return cached.image();
+        }
+
+        try {
+            var request = HttpRequest.newBuilder(thumbnailEndpoint(cleanId))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                    .header("User-Agent", "Vizi/1.0 stock thumbnail")
+                    .GET()
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_GATEWAY,
+                        "Stock image provider failed with status " + response.statusCode()
+                );
+            }
+
+            var contentType = response.headers()
+                    .firstValue("content-type")
+                    .map(StockService::normalizeContentType)
+                    .orElse("");
+            var content = response.body();
+            if (!supportedImageType(contentType) || content.length == 0 || content.length > MAX_IMAGE_BYTES) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Stock image response is invalid");
+            }
+
+            var image = new StockImage(content, contentType);
+            if (imageCache.size() >= MAX_IMAGE_CACHE_ENTRIES) {
+                imageCache.clear();
+            }
+            imageCache.put(cleanId, new CachedImage(Instant.now().plus(IMAGE_CACHE_TTL), image));
+            return image;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Stock image request was interrupted", exception);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Stock image request failed", exception);
+        }
+    }
+
+    private URI thumbnailEndpoint(String id) {
+        var base = openverseBaseUrl.endsWith("/") ? openverseBaseUrl : openverseBaseUrl + "/";
+        return URI.create(base + id + "/thumb/");
+    }
+
+    private static String normalizeImageId(String id) {
+        if (id == null || !id.matches("[A-Za-z0-9-]{1,100}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid stock image id");
+        }
+        return id;
+    }
+
+    private static String normalizeContentType(String value) {
+        var separator = value.indexOf(';');
+        return (separator >= 0 ? value.substring(0, separator) : value).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean supportedImageType(String contentType) {
+        return contentType.equals("image/jpeg")
+                || contentType.equals("image/png")
+                || contentType.equals("image/webp")
+                || contentType.equals("image/gif");
+    }
+
     private URI endpoint(String query, int page, int pageSize) {
         var separator = openverseBaseUrl.contains("?") ? "&" : "?";
         var encodedLicense = URLEncoder.encode(LICENSE_FILTER, StandardCharsets.UTF_8);
@@ -124,7 +198,7 @@ class StockService {
         for (JsonNode item : (ArrayNode) results) {
             var id = stringValue(item, "id");
             var title = stringValue(item, "title");
-            var previewUrl = previewUrl(id, stringValue(item, "thumbnail"));
+            var previewUrl = id.matches("[A-Za-z0-9-]{1,100}") ? previewUrl(id) : "";
             if (id.isBlank() || title.isBlank() || previewUrl.isBlank()) {
                 continue;
             }
@@ -179,28 +253,9 @@ class StockService {
         return cleanKind;
     }
 
-    private static String previewUrl(String id, String candidate) {
-        if (trustedOpenverseUrl(candidate)) {
-            return candidate;
-        }
-        return id.matches("[A-Za-z0-9-]{1,100}")
-                ? "https://api.openverse.org/v1/images/" + id + "/thumb/"
-                : "";
+    private static String previewUrl(String id) {
+        return "/api/stock/images/" + id;
     }
-
-    private static boolean trustedOpenverseUrl(String value) {
-        try {
-            var uri = URI.create(value);
-            var host = uri.getHost();
-            return "https".equalsIgnoreCase(uri.getScheme())
-                    && host != null
-                    && ("api.openverse.org".equalsIgnoreCase(host)
-                    || host.toLowerCase().endsWith(".openverse.org"));
-        } catch (IllegalArgumentException exception) {
-            return false;
-        }
-    }
-
     private static String httpsUrl(String value) {
         try {
             var uri = URI.create(value);
@@ -225,5 +280,8 @@ class StockService {
     }
 
     private record CachedPage(Instant expiresAt, StockSearchResponse response) {
+    }
+
+    private record CachedImage(Instant expiresAt, StockImage image) {
     }
 }

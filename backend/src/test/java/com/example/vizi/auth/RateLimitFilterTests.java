@@ -40,6 +40,13 @@ class RateLimitFilterTests {
     }
 
     @Test
+    void stockImageRouteIsRateLimitedAcrossAssetIds() throws Exception {
+        assertAllowed("GET", "/api/stock/images/asset-1", "198.51.100.60", 120);
+        assertBlocked("GET", "/api/stock/images/asset-2", "198.51.100.60");
+        assertAllowed("GET", "/api/stock/images/asset-3", "198.51.100.61", 1);
+    }
+
+    @Test
     void unlistedRoutesPassThrough() throws Exception {
         assertAllowed("GET", "/api/health", "198.51.100.40", 40);
     }

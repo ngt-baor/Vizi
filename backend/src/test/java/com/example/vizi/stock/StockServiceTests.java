@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -67,8 +68,8 @@ class StockServiceTests {
             assertThat(response.total()).isEqualTo(49);
             assertThat(response.hasMore()).isTrue();
             assertThat(response.assets()).hasSize(2);
-            assertThat(response.assets().get(0).previewUrl()).startsWith("https://api.openverse.org/");
-            assertThat(response.assets().get(1).previewUrl()).isEqualTo("https://api.openverse.org/v1/images/asset-2/thumb/");
+            assertThat(response.assets().get(0).previewUrl()).isEqualTo("/api/stock/images/asset-1");
+            assertThat(response.assets().get(1).previewUrl()).isEqualTo("/api/stock/images/asset-2");
             assertThat(response.assets().get(1).sourceUrl()).isBlank();
             assertThat(response.assets().get(0).credit()).contains("Example creator");
         } finally {
@@ -90,6 +91,41 @@ class StockServiceTests {
             service.search(" ", "all", 1, 24);
 
             assertThat(query.get()).contains("q=business+card", "page=1", "page_size=24");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void imageUsesValidatedThumbnailEndpointAndCaches() throws Exception {
+        var requests = new AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var body = new byte[] { 1, 2, 3, 4 };
+        server.createContext("/", exchange -> {
+            requests.incrementAndGet();
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/images/asset-1/thumb/");
+            exchange.getResponseHeaders().set("Content-Type", "image/webp; charset=binary");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var response = exchange.getResponseBody()) {
+                response.write(body);
+            }
+        });
+        server.start();
+
+        try {
+            var service = new StockService(
+                    new ObjectMapper(),
+                    HttpClient.newHttpClient(),
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/images"
+            );
+
+            var first = service.image("asset-1");
+            var second = service.image("asset-1");
+
+            assertThat(first.contentType()).isEqualTo("image/webp");
+            assertThat(first.content()).containsExactly(body);
+            assertThat(second.content()).containsExactly(body);
+            assertThat(requests).hasValue(1);
         } finally {
             server.stop(0);
         }
