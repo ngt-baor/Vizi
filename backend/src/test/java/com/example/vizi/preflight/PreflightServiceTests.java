@@ -157,4 +157,28 @@ class PreflightServiceTests {
         assertThat(report.valid()).isTrue();
         assertThat(report.issues()).isEmpty();
     }
+
+    @Test
+    void v2FrontAndBackPagesAreChecked() {
+        var report = preflightService.check("""
+                {
+                  "schemaVersion": 2,
+                  "pages": {
+                    "front": {"id": "front", "layers": [
+                      {"type": "text", "x": 1, "y": 1, "width": 30, "height": 10}
+                    ]},
+                    "back": {"id": "back", "layers": [
+                      {"type": "image", "x": 10, "y": 10, "width": 40, "height": 40,
+                       "pixelWidth": 100, "pixelHeight": 100}
+                    ]}
+                  }
+                }
+                """, 90, 54);
+
+        assertThat(report.valid()).isFalse();
+        assertThat(report.issues()).extracting(PreflightIssue::code)
+                .containsExactly("LAYER_OUTSIDE_SAFE_ZONE", "LOW_IMAGE_RESOLUTION");
+        assertThat(report.issues()).extracting(PreflightIssue::side)
+                .containsExactly("front", "back");
+    }
 }

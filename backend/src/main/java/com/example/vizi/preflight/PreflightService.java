@@ -23,16 +23,16 @@ public class PreflightService {
     public PreflightReport check(String canvasJson, double widthMm, double heightMm) {
         try {
             var canvas = objectMapper.readTree(canvasJson);
-            var layers = canvas.get("layers");
-            if (!canvas.isObject() || layers == null || !layers.isArray()) {
+            var layerGroups = layerGroups(canvas);
+            if (layerGroups == null) {
                 return report(new PreflightIssue(
                         "ERROR",
                         "INVALID_CANVAS",
-                        "Canvas JSON must contain a layers array.",
+                        "Canvas JSON must contain a layers array or V2 front/back pages.",
                         null
                 ));
             }
-            if (layers.isEmpty()) {
+            if (layerGroups.stream().allMatch(group -> group.layers().isEmpty())) {
                 return report(new PreflightIssue(
                         "ERROR",
                         "EMPTY_CANVAS",
@@ -41,8 +41,10 @@ public class PreflightService {
                 ));
             }
             var issues = new ArrayList<PreflightIssue>();
-            addSafeZoneIssues(layers, widthMm, heightMm, issues);
-            addImageResolutionIssues(layers, widthMm, heightMm, issues);
+            for (var group : layerGroups) {
+                addSafeZoneIssues(group.side(), group.layers(), widthMm, heightMm, issues);
+                addImageResolutionIssues(group.side(), group.layers(), widthMm, heightMm, issues);
+            }
             return new PreflightReport(
                     issues.stream().noneMatch(issue -> issue.level().equals("ERROR")),
                     List.copyOf(issues)
@@ -57,11 +59,34 @@ public class PreflightService {
         }
     }
 
+    private static List<LayerGroup> layerGroups(JsonNode canvas) {
+        if (!canvas.isObject()) {
+            return null;
+        }
+        var layers = canvas.get("layers");
+        if (layers != null && layers.isArray()) {
+            return List.of(new LayerGroup(null, layers));
+        }
+        var pages = canvas.get("pages");
+        if (pages == null || !pages.isObject()) {
+            return null;
+        }
+        var front = pages.get("front");
+        var back = pages.get("back");
+        var frontLayers = front != null && front.isObject() ? front.get("layers") : null;
+        var backLayers = back != null && back.isObject() ? back.get("layers") : null;
+        return frontLayers != null && frontLayers.isArray()
+                && backLayers != null && backLayers.isArray()
+                ? List.of(new LayerGroup("front", frontLayers), new LayerGroup("back", backLayers))
+                : null;
+    }
+
     private static PreflightReport report(PreflightIssue issue) {
         return new PreflightReport(false, List.of(issue));
     }
 
     private static void addSafeZoneIssues(
+            String side,
             JsonNode layers,
             double widthMm,
             double heightMm,
@@ -100,7 +125,8 @@ public class PreflightService {
                         critical
                                 ? "Text layers must stay inside the 3 mm safe zone."
                                 : "Layer extends outside the 3 mm safe zone.",
-                        index
+                        index,
+                        side
                 ));
             }
         }
@@ -121,6 +147,7 @@ public class PreflightService {
     }
 
     private static void addImageResolutionIssues(
+            String side,
             JsonNode layers,
             double widthMm,
             double heightMm,
@@ -154,10 +181,14 @@ public class PreflightService {
                         "WARNING",
                         "LOW_IMAGE_RESOLUTION",
                         "Image resolution is below 150 DPI at the current print size.",
-                        index
+                        index,
+                        side
                 ));
             }
         }
+    }
+
+    private record LayerGroup(String side, JsonNode layers) {
     }
 
     private static double number(JsonNode node, String field, double fallback) {

@@ -10,6 +10,8 @@ import {
   Bold,
   ChevronDown,
   Circle,
+  CircleAlert,
+  CircleCheck,
   Copy,
   Download,
   Eye,
@@ -34,6 +36,7 @@ import {
   Save,
   Shapes,
   Share2,
+  ShieldCheck,
   Square,
   Trash2,
   Type,
@@ -44,7 +47,15 @@ import { computed, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
-import { apiBaseUrl, getDesign, removeBackgroundImageAsset, updateDesign } from "../api";
+import {
+  apiBaseUrl,
+  getDesign,
+  preflightDesign,
+  removeBackgroundImageAsset,
+  type PreflightIssue,
+  type PreflightReport,
+  updateDesign,
+} from "../api";
 import {
   createEditorDocumentV2,
   readEditorDocumentV2,
@@ -77,6 +88,9 @@ const activeTool = ref<EditorTool>("select");
 const selectedLayerId = ref<string | null>("front-title");
 const zoom = ref(100);
 const showPrintGuides = ref(true);
+const preflightReport = ref<PreflightReport | null>(null);
+const preflightLoading = ref(false);
+const preflightError = ref("");
 const saveState = ref<"idle" | "saved" | "dirty" | "saving" | "loading" | "error">("idle");
 const saveError = ref("");
 const imageInput = ref<HTMLInputElement | null>(null);
@@ -97,6 +111,8 @@ const statusText = computed(() => {
   if (saveState.value === "dirty") return "Unsaved changes";
   return backendDesignId.value ? "Draft loaded" : "All changes saved";
 });
+const preflightErrorCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "ERROR").length ?? 0);
+const preflightWarningCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "WARNING").length ?? 0);
 
 const sides: EditorSide[] = ["front", "back"];
 const palettes = ["#15161b", "#ffffff", "#b4367d", "#f4c46d", "#0d766d", "#5b83d4"];
@@ -161,6 +177,8 @@ const canvasTools: Array<{ id: EditorTool; label: string; icon: Component }> = [
 function markDirty(): void {
   saveError.value = "";
   saveState.value = "dirty";
+  preflightReport.value = null;
+  preflightError.value = "";
 }
 
 function backendAssetUrl(url: string): string {
@@ -171,6 +189,18 @@ function safeImageSource(value: string | undefined): string {
   if (!value) return "";
   if (/^https?:\/\//i.test(value) || value.startsWith("/")) return value;
   return /^data:image\/(png|jpeg|webp|gif);base64,/i.test(value) ? value : "";
+}
+
+function readImagePixelSize(source: string): Promise<{ pixelWidth?: number; pixelHeight?: number }> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve({
+      pixelWidth: image.naturalWidth,
+      pixelHeight: image.naturalHeight,
+    }), { once: true });
+    image.addEventListener("error", () => resolve({}), { once: true });
+    image.src = source;
+  });
 }
 
 function selectPage(side: EditorSide): void {
@@ -335,11 +365,12 @@ function handleImageFile(event: Event): void {
   }
 
   const reader = new FileReader();
-  reader.addEventListener("load", () => {
+  reader.addEventListener("load", async () => {
     const source = typeof reader.result === "string" ? safeImageSource(reader.result) : "";
     const targetId = imageTargetLayerId.value;
     imageTargetLayerId.value = null;
     if (!source) return;
+    const pixelSize = await readImagePixelSize(source);
     const target = targetId ? activePage.value.layers.find((layer) => layer.id === targetId && layer.type === "image") : null;
     if (target) {
       target.src = source;
@@ -347,12 +378,14 @@ function handleImageFile(event: Event): void {
       target.processedSrc = undefined;
       target.processedAssetId = undefined;
       target.processedStorageKey = undefined;
+      target.pixelWidth = pixelSize.pixelWidth;
+      target.pixelHeight = pixelSize.pixelHeight;
       target.visible = true;
       imageFileByLayer.set(target.id, file);
       selectedLayerId.value = target.id;
       markDirty();
     } else {
-      const layer = addLayer("image", source, { name: file.name });
+      const layer = addLayer("image", source, { name: file.name, ...pixelSize });
       imageFileByLayer.set(layer.id, file);
       activePanel.value = "uploads";
     }
@@ -617,6 +650,39 @@ async function saveDraft(): Promise<void> {
   }
 }
 
+async function runPreflightCheck(): Promise<void> {
+  const designId = backendDesignId.value;
+  if (!designId) {
+    preflightError.value = "Save this draft before running preflight.";
+    return;
+  }
+  if (preflightLoading.value || saveState.value === "saving" || saveState.value === "loading") return;
+
+  preflightLoading.value = true;
+  preflightReport.value = null;
+  preflightError.value = "";
+  try {
+    await saveDraft();
+    if (saveState.value === "error") {
+      throw new Error(saveError.value || "Cannot save draft before preflight");
+    }
+    preflightReport.value = await preflightDesign(designId);
+  } catch (unknownError) {
+    preflightReport.value = null;
+    preflightError.value = unknownError instanceof Error ? unknownError.message : "Cannot run preflight";
+  } finally {
+    preflightLoading.value = false;
+  }
+}
+
+function focusPreflightIssue(issue: PreflightIssue): void {
+  if ((issue.side !== "front" && issue.side !== "back") || issue.layerIndex == null) return;
+  const layer = document.value.pages[issue.side].layers[issue.layerIndex];
+  activeSide.value = issue.side;
+  selectedLayerId.value = layer?.id ?? null;
+  activeTool.value = "select";
+}
+
 async function loadInitialDocument(): Promise<void> {
   const stored = readEditorDocumentV2(localStorage.getItem(storageKey.value));
   const localDocument = stored?.documentId === documentId.value ? stored : null;
@@ -717,6 +783,15 @@ onMounted(() => {
         </button>
         <button class="editor-v2__header-icon" type="button" aria-label="Download" title="Download">
           <Download :size="16" :stroke-width="1.8" aria-hidden="true" />
+        </button>
+        <button
+          class="editor-v2__preflight"
+          type="button"
+          :disabled="preflightLoading || saveState === 'saving' || saveState === 'loading'"
+          @click="runPreflightCheck"
+        >
+          <ShieldCheck :size="15" :stroke-width="1.8" aria-hidden="true" />
+          <span>{{ preflightLoading ? "Checking" : "Preflight" }}</span>
         </button>
         <button class="editor-v2__share" type="button">
           <Share2 :size="15" :stroke-width="1.8" aria-hidden="true" />
@@ -1056,6 +1131,48 @@ onMounted(() => {
             </button>
           </div>
         </div>
+
+        <section
+          v-if="preflightError || preflightReport"
+          class="editor-v2__preflight-report"
+          :class="{ passed: preflightReport?.valid }"
+          aria-live="polite"
+        >
+          <p v-if="preflightError" class="editor-v2__preflight-error" role="alert">{{ preflightError }}</p>
+          <template v-else-if="preflightReport">
+            <div class="editor-v2__preflight-summary">
+              <CircleCheck v-if="preflightReport.valid" :size="19" :stroke-width="1.8" aria-hidden="true" />
+              <CircleAlert v-else :size="19" :stroke-width="1.8" aria-hidden="true" />
+              <span>
+                <strong>{{ preflightReport.valid ? "Preflight passed" : "Preflight found issues" }}</strong>
+                <small v-if="preflightReport.issues.length">
+                  {{ preflightErrorCount }} {{ preflightErrorCount === 1 ? "error" : "errors" }} /
+                  {{ preflightWarningCount }} {{ preflightWarningCount === 1 ? "warning" : "warnings" }}
+                </small>
+                <small v-else>Ready for the next production step</small>
+              </span>
+            </div>
+            <div v-if="preflightReport.issues.length" class="editor-v2__preflight-issues">
+              <button
+                v-for="(issue, index) in preflightReport.issues"
+                :key="(issue.side ?? 'document') + '-' + issue.code + '-' + index"
+                class="editor-v2__preflight-issue"
+                :class="issue.level.toLowerCase()"
+                type="button"
+                :disabled="issue.side == null || issue.layerIndex == null"
+                @click="focusPreflightIssue(issue)"
+              >
+                <CircleAlert :size="15" :stroke-width="1.8" aria-hidden="true" />
+                <span>
+                  <strong>
+                    {{ issue.side === "front" ? "Front" : issue.side === "back" ? "Back" : "Document" }} / {{ issue.level }}
+                  </strong>
+                  <small>{{ issue.message }}</small>
+                </span>
+              </button>
+            </div>
+          </template>
+        </section>
 
         <template v-if="selectedLayer">
           <button class="editor-v2__inspector-lock" type="button" @click="toggleLayerLock(selectedLayer)">
@@ -1529,6 +1646,7 @@ a {
   background: #4baf86;
 }
 
+.editor-v2__preflight,
 .editor-v2__share,
 .editor-v2__save {
   height: 31px;
@@ -1551,6 +1669,7 @@ a {
   color: #ffffff;
 }
 
+.editor-v2__preflight:hover,
 .editor-v2__share:hover {
   background: var(--editor-soft);
 }
@@ -1559,6 +1678,7 @@ a {
   background: var(--editor-accent-hover);
 }
 
+.editor-v2__preflight:disabled,
 .editor-v2__save:disabled {
   cursor: wait;
   opacity: 0.65;
@@ -2353,6 +2473,92 @@ a {
   color: var(--sidebar-text);
 }
 
+.editor-v2__preflight-report {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #6f354f;
+  border-radius: 5px;
+  background: #21161d;
+}
+
+.editor-v2__preflight-report.passed {
+  border-color: #286650;
+  background: #13231d;
+}
+
+.editor-v2__preflight-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #f16aa9;
+}
+
+.editor-v2__preflight-report.passed .editor-v2__preflight-summary {
+  color: #63c39c;
+}
+
+.editor-v2__preflight-summary > span,
+.editor-v2__preflight-issue > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.editor-v2__preflight-summary strong,
+.editor-v2__preflight-issue strong {
+  color: var(--sidebar-text);
+  font-size: 11px;
+}
+
+.editor-v2__preflight-summary small,
+.editor-v2__preflight-issue small {
+  color: var(--sidebar-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.editor-v2__preflight-error {
+  margin: 0;
+  color: #ff8f9a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.editor-v2__preflight-issues {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.editor-v2__preflight-issue {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  color: #ff8792;
+  text-align: left;
+  cursor: pointer;
+}
+
+.editor-v2__preflight-issue.warning {
+  color: #e5b85c;
+}
+
+.editor-v2__preflight-issue:hover:not(:disabled) {
+  border-color: #8b4770;
+}
+
+.editor-v2__preflight-issue:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .editor-v2__inspector-lock {
   width: 100%;
   min-height: 34px;
@@ -2790,6 +2996,7 @@ textarea:focus-visible {
   }
 
   .editor-v2__header-icon:nth-child(-n + 4),
+  .editor-v2__preflight span,
   .editor-v2__share span {
     display: none;
   }
@@ -2872,6 +3079,7 @@ textarea:focus-visible {
     gap: 5px;
   }
 
+  .editor-v2__preflight,
   .editor-v2__share,
   .editor-v2__save {
     width: 32px;
@@ -2879,6 +3087,7 @@ textarea:focus-visible {
     padding: 0;
   }
 
+  .editor-v2__preflight span,
   .editor-v2__share span,
   .editor-v2__save span {
     display: none;

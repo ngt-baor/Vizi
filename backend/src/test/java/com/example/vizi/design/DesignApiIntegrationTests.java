@@ -271,7 +271,17 @@ class DesignApiIntegrationTests {
                 null,
                 new BigDecimal("90.00"),
                 new BigDecimal("54.00"),
-                "{\"layers\":[{\"type\":\"text\",\"text\":\"Too close\",\"x\":1,\"y\":1,\"width\":30,\"height\":10}]}",
+                """
+                {
+                  "schemaVersion": 2,
+                  "pages": {
+                    "front": {"id": "front", "layers": [
+                      {"type": "text", "text": "Too close", "x": 1, "y": 1, "width": 30, "height": 10}
+                    ]},
+                    "back": {"id": "back", "layers": []}
+                  }
+                }
+                """,
                 true
         ));
         var createResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
@@ -289,7 +299,8 @@ class DesignApiIntegrationTests {
                 .andExpect(jsonPath("$.issues.length()").value(1))
                 .andExpect(jsonPath("$.issues[0].level").value("ERROR"))
                 .andExpect(jsonPath("$.issues[0].code").value("LAYER_OUTSIDE_SAFE_ZONE"))
-                .andExpect(jsonPath("$.issues[0].layerIndex").value(0));
+                .andExpect(jsonPath("$.issues[0].layerIndex").value(0))
+                .andExpect(jsonPath("$.issues[0].side").value("front"));
 
         mockMvc.perform(post("/api/designs/" + designId + "/preflight")
                         .with(user("other@example.test"))

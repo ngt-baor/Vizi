@@ -23,6 +23,8 @@ export type EditorLayerV2 = {
   processedSrc?: string;
   processedAssetId?: number;
   processedStorageKey?: string;
+  pixelWidth?: number;
+  pixelHeight?: number;
   fill?: string;
   stroke?: string;
   strokeWidth?: number;

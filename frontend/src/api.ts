@@ -143,6 +143,7 @@ export type PreflightIssue = {
   code: string;
   message: string;
   layerIndex: number | null;
+  side: "front" | "back" | null;
 };
 
 export type PreflightReport = {
