@@ -32,6 +32,7 @@ class Icons8ServiceTests {
                       "category": "Mobile",
                       "subcategory": "Calls",
                       "platform": "ios7",
+                      "previewUrl": "https://img.icons8.com/96/material/phone.png",
                       "isColor": false,
                       "isAnimated": false
                     }
@@ -58,7 +59,7 @@ class Icons8ServiceTests {
             assertThat(response.creditText()).isEqualTo("Icons by Icons8");
             assertThat(response.creditUrl()).isEqualTo("https://icons8.com");
             assertThat(response.icons()).hasSize(1);
-            assertThat(response.icons().get(0).previewUrl()).contains("img.icons8.com", "id=9659");
+            assertThat(response.icons().get(0).previewUrl()).isEqualTo("https://img.icons8.com/96/material/phone.png");
             assertThat(response.icons().get(0).sourceUrl()).contains("icons8.com/icon/9659");
         } finally {
             server.stop(0);
@@ -75,13 +76,29 @@ class Icons8ServiceTests {
     }
 
     @Test
+    void missingApiKeyReturnsDisabledResponseWithoutCallingUpstream() {
+        var service = new Icons8Service(
+                new ObjectMapper(),
+                HttpClient.newHttpClient(),
+                "",
+                "http://127.0.0.1:1/search"
+        );
+
+        var response = service.search("phone", "en", "material", 10);
+
+        assertThat(response.configured()).isFalse();
+        assertThat(response.icons()).isEmpty();
+        assertThat(response.message()).contains("ICONS8_API_KEY");
+    }
+
+    @Test
     void upstreamFailureReturnsBadGateway() throws Exception {
         var server = startServer(new AtomicReference<>(), new AtomicReference<>(), new AtomicReference<>(), 503, "{}");
         try {
             var service = new Icons8Service(
                     new ObjectMapper(),
                     HttpClient.newHttpClient(),
-                    "",
+                    "test-icons-key",
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/search"
             );
 

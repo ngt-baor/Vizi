@@ -10,14 +10,21 @@ import {
   Bold,
   ChevronDown,
   Circle,
+  Columns3,
   CircleAlert,
   CircleCheck,
   Copy,
+  Diamond,
   Download,
   Eye,
   EyeOff,
   GripVertical,
+  Grid2x2,
+  Grid3x2,
+  Grid3x3,
+  Hexagon,
   ImageIcon,
+  LayoutGrid,
   Layers3,
   Link2,
   LockKeyhole,
@@ -26,25 +33,34 @@ import {
   Monitor,
   Move,
   MousePointer2,
+  Octagon,
   Palette,
+  Pentagon,
   PanelLeft,
   PanelRight,
+  PanelsTopLeft,
+  PanelTop,
   Play,
   Plus,
   Redo2,
+  RectangleHorizontal,
   RotateCw,
   Save,
+  Search,
+  Sparkles,
   Shapes,
   Share2,
   ShoppingCart,
   ShieldCheck,
   Square,
+  Star,
   Trash2,
+  Triangle,
   Type,
   Undo2,
   Upload,
 } from "@lucide/vue";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
@@ -53,6 +69,8 @@ import {
   getDesign,
   preflightDesign,
   removeBackgroundImageAsset,
+  searchIcons8,
+  type Icons8Icon,
   type PreflightIssue,
   type PreflightReport,
   updateDesign,
@@ -60,23 +78,36 @@ import {
 import {
   createEditorDocumentV2,
   readEditorDocumentV2,
+  type EditorDocumentV2,
+  type EditorFillMode,
+  type EditorGradientStopV2,
   type EditorLayerV2,
   type EditorLayerType,
+  type EditorShapeKind,
+  type EditorShapeEffect,
   type EditorSide,
 } from "../editor-v2/document";
+import { createDefaultGradientStops, shapeFillBackground } from "../editor-v2/shapeAppearance";
 import {
   createPrintPdf,
   downloadPrintPdf,
   getPrintExportSpec,
 } from "../editor-v2/printExport";
+import { extractImagePalette } from "../editor-v2/imagePalette";
+import { localFonts } from "../generated/localFonts";
 
 type EditorTool = "select" | "text" | "rect" | "ellipse" | "image";
 type EditorLayerAction = "duplicate" | "toggle-lock" | "bring-forward" | "send-backward" | "delete";
-type SidebarPanel = "elements" | "text" | "uploads" | "brand" | "layers";
+type SidebarPanel = "elements" | "text" | "uploads" | "icons8" | "layers";
+type Icons8Platform = "" | "material" | "fluency" | "color" | "ios7" | "windows";
 type TextPreset = "title" | "subtitle" | "body";
-type ShapePreset = "rectangle" | "rounded" | "ellipse";
+type ShapePreset = EditorShapeKind;
+type FramePreset = "frame" | "circle-frame" | "rounded-frame" | "2-photos" | "3-photos" | "4-photos" | "6-photos" | "9-photos" | "feature-left" | "feature-right" | "feature-top" | "hero-mosaic";
+type FrameCell = Pick<EditorLayerV2, "x" | "y" | "width" | "height"> & { shapeKind: EditorShapeKind };
 type GeometryField = "x" | "y" | "width" | "height";
 type NumericLayerField = "fontSize" | "rotation" | "strokeWidth" | "cornerRadius";
+type GradientNumberField = "gradientAngle" | "gradientCenterX" | "gradientCenterY" | "gradientRadius";
+type EffectNumberField = "shadowX" | "shadowY" | "shadowBlur" | "shadowOpacity";
 
 type IconItem = {
   id: string;
@@ -84,16 +115,34 @@ type IconItem = {
   icon: Component;
 };
 
+type FrameItem = IconItem & { preset: FramePreset };
+type FontOption = {
+  label: string;
+  value: string;
+  kind: string;
+  searchValue: string;
+};
+
 const route = useRoute();
 const router = useRouter();
 const documentId = computed(() => String(route.params.designId ?? "new"));
 const storageKey = computed(() => "vizi.editor.v2." + documentId.value);
 const document = ref(createEditorDocumentV2(documentId.value));
+const historyPast = ref<EditorDocumentV2[]>([]);
+const historyFuture = ref<EditorDocumentV2[]>([]);
+const internalClipboard = ref<EditorLayerV2 | null>(null);
+const pasteCount = ref(0);
+let historySnapshot = JSON.stringify(document.value);
 const activeSide = ref<EditorSide>("front");
 const activePanel = ref<SidebarPanel>("elements");
 const activeTool = ref<EditorTool>("select");
 const selectedLayerId = ref<string | null>("front-title");
 const zoom = ref(100);
+const panX = ref(0);
+const panY = ref(0);
+const canvasFrame = ref<HTMLElement | null>(null);
+const zoomControl = ref<HTMLElement | null>(null);
+const zoomMenuOpen = ref(false);
 const showPrintGuides = ref(true);
 const preflightReport = ref<PreflightReport | null>(null);
 const preflightLoading = ref(false);
@@ -109,6 +158,17 @@ const draggedLayerId = ref<string | null>(null);
 const imageFileByLayer = new Map<string, File>();
 const backgroundRemovingLayerId = ref<string | null>(null);
 const backgroundRemovalError = ref("");
+const paletteExtractingLayerId = ref<string | null>(null);
+const paletteExtractionError = ref("");
+const icons8Query = ref("");
+const icons8Platform = ref<Icons8Platform>("material");
+const icons8Results = ref<Icons8Icon[]>([]);
+const icons8Loading = ref(false);
+const icons8Error = ref("");
+const icons8Message = ref("");
+let icons8RequestId = 0;
+const fontSearch = ref("");
+const fontResultLimit = ref(40);
 const backendDesignId = computed(() => {
   const value = Number(documentId.value);
   return Number.isSafeInteger(value) && value > 0 ? value : null;
@@ -129,12 +189,31 @@ const preflightErrorCount = computed(() => preflightReport.value?.issues.filter(
 const preflightWarningCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "WARNING").length ?? 0);
 
 const sides: EditorSide[] = ["front", "back"];
+const MIN_ZOOM = 5;
+const MAX_ZOOM = 800;
+const zoomPresets = [5, 25, 50, 100, 200, 400, 800];
 const palettes = ["#15161b", "#ffffff", "#b4367d", "#f4c46d", "#0d766d", "#5b83d4"];
-const fontOptions = [
-  { label: "Aptos", value: "Aptos, Segoe UI, sans-serif" },
-  { label: "Arial", value: "Arial, sans-serif" },
-  { label: "Georgia", value: "Georgia, serif" },
+const systemFontOptions = [
+  { label: "Aptos", value: "Aptos, Segoe UI, sans-serif", kind: "Sans-serif" },
+  { label: "Arial", value: "Arial, sans-serif", kind: "Sans-serif" },
+  { label: "Georgia", value: "Georgia, serif", kind: "Serif" },
 ];
+const fontOptions: FontOption[] = (() => {
+  const seen = new Set<string>();
+  return [
+    ...systemFontOptions,
+    ...localFonts.map((font) => ({
+      label: font.family,
+      value: font.family,
+      kind: font.format.toUpperCase(),
+    })),
+  ].filter((font) => {
+    const key = normalizeFontSearch(font.label);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((font) => ({ ...font, searchValue: normalizeFontSearch(font.label) }));
+})();
 const textPresetOptions: Array<{
   id: TextPreset;
   label: string;
@@ -152,6 +231,49 @@ const selectedLayer = computed<EditorLayerV2 | null>(() => (
   activePage.value.layers.find((layer) => layer.id === selectedLayerId.value) ?? null
 ));
 const imageLayers = computed(() => activePage.value.layers.filter((layer) => layer.type === "image" && safeImageSource(layer.src)));
+const documentPalette = computed(() => [...new Set(sides.flatMap((side) =>
+  document.value.pages[side].layers.flatMap((layer) => layer.extractedPalette ?? []),
+))]);
+const availablePalettes = computed(() => [...new Set([
+  ...documentPalette.value,
+  ...palettes,
+])]);
+const filteredFontOptions = computed(() => {
+  const query = normalizeFontSearch(fontSearch.value);
+  return query ? fontOptions.filter((font) => font.searchValue.includes(query)) : fontOptions;
+});
+const visibleFontOptions = computed(() => filteredFontOptions.value.slice(0, fontResultLimit.value));
+const hiddenFontCount = computed(() => Math.max(0, filteredFontOptions.value.length - visibleFontOptions.value.length));
+const canUndo = computed(() => historyPast.value.length > 0);
+const canRedo = computed(() => historyFuture.value.length > 0);
+const selectedShapePreset = computed<ShapePreset | null>(() => {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return null;
+  if (layer.shapeKind) return layer.shapeKind;
+  if (layer.type === "ellipse") return "ellipse";
+  return (layer.cornerRadius ?? 0) > 0 ? "rounded" : "rectangle";
+});
+const selectedShapeFillMode = computed<EditorFillMode>(() => {
+  const layer = selectedLayer.value;
+  return layer && (layer.type === "rect" || layer.type === "ellipse")
+    && (layer.fillMode === "linear" || layer.fillMode === "radial")
+    ? layer.fillMode
+    : "solid";
+});
+const selectedShapeEffect = computed<EditorShapeEffect>(() => {
+  const layer = selectedLayer.value;
+  return layer && (layer.type === "rect" || layer.type === "ellipse")
+    && (layer.shapeEffect === "shadow" || layer.shapeEffect === "hollow" || layer.shapeEffect === "glow")
+    ? layer.shapeEffect
+    : "none";
+});
+const selectedGradientStops = computed<EditorGradientStopV2[]>(() => {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return [];
+  return layer.gradientStops && layer.gradientStops.length >= 2
+    ? layer.gradientStops
+    : createDefaultGradientStops(layer.fill);
+});
 const inspectorTitle = computed(() => {
   if (!selectedLayer.value) return "Page";
   if (selectedLayer.value.type === "text") return "Text";
@@ -162,7 +284,7 @@ const panelTitle = computed(() => ({
   elements: "Elements",
   text: "Text",
   uploads: "Uploads",
-  brand: "Brand",
+  icons8: "Icons8",
   layers: "Layers",
 }[activePanel.value]));
 
@@ -170,14 +292,103 @@ const sidebarItems: Array<{ id: SidebarPanel; label: string; icon: Component }> 
   { id: "elements", label: "Elements", icon: Shapes },
   { id: "text", label: "Text", icon: Type },
   { id: "uploads", label: "Uploads", icon: Upload },
-  { id: "brand", label: "Brand", icon: Palette },
+  { id: "icons8", label: "Icons8", icon: ImageIcon },
   { id: "layers", label: "Layers", icon: Layers3 },
+];
+
+const icons8PlatformOptions: Array<{ value: Icons8Platform; label: string }> = [
+  { value: "material", label: "Material" },
+  { value: "fluency", label: "Fluency" },
+  { value: "color", label: "Color" },
+  { value: "ios7", label: "iOS 7" },
+  { value: "windows", label: "Windows" },
+  { value: "", label: "All styles" },
 ];
 
 const shapeItems: Array<IconItem & { preset: ShapePreset }> = [
   { id: "rectangle", label: "Rectangle", icon: Square, preset: "rectangle" },
   { id: "rounded", label: "Rounded", icon: Square, preset: "rounded" },
   { id: "ellipse", label: "Ellipse", icon: Circle, preset: "ellipse" },
+  { id: "triangle", label: "Triangle", icon: Triangle, preset: "triangle" },
+  { id: "pentagon", label: "Pentagon", icon: Pentagon, preset: "pentagon" },
+  { id: "hexagon", label: "Hexagon", icon: Hexagon, preset: "hexagon" },
+  { id: "star", label: "Star", icon: Star, preset: "star" },
+  { id: "diamond", label: "Diamond", icon: Diamond, preset: "diamond" },
+  { id: "octagon", label: "Octagon", icon: Octagon, preset: "octagon" },
+  { id: "burst", label: "Burst", icon: Sparkles, preset: "burst" },
+  { id: "pill", label: "Pill", icon: RectangleHorizontal, preset: "pill" },
+];
+
+function gridCells(columns: number, rows: number): FrameCell[] {
+  const gap = 2;
+  const width = (100 - gap * (columns + 1)) / columns;
+  const height = (100 - gap * (rows + 1)) / rows;
+  return Array.from({ length: columns * rows }, (_, index) => ({
+    x: gap + (index % columns) * (width + gap),
+    y: gap + Math.floor(index / columns) * (height + gap),
+    width,
+    height,
+    shapeKind: "rectangle",
+  }));
+}
+
+const frameSpecs: Record<FramePreset, { label: string; cells: FrameCell[] }> = {
+  frame: { label: "Frame", cells: [{ x: 12, y: 12, width: 76, height: 76, shapeKind: "rectangle" }] },
+  "circle-frame": { label: "Circle frame", cells: [{ x: 12, y: 12, width: 76, height: 76, shapeKind: "ellipse" }] },
+  "rounded-frame": { label: "Rounded frame", cells: [{ x: 12, y: 12, width: 76, height: 76, shapeKind: "rounded" }] },
+  "2-photos": { label: "2 photos", cells: gridCells(2, 1) },
+  "3-photos": { label: "3 photos", cells: gridCells(3, 1) },
+  "4-photos": { label: "4 photos", cells: gridCells(2, 2) },
+  "6-photos": { label: "6 photos", cells: gridCells(3, 2) },
+  "9-photos": { label: "9 photos", cells: gridCells(3, 3) },
+  "feature-left": {
+    label: "Feature left",
+    cells: [
+      { x: 2, y: 2, width: 48, height: 96, shapeKind: "rectangle" },
+      { x: 52, y: 2, width: 46, height: 47, shapeKind: "rectangle" },
+      { x: 52, y: 51, width: 46, height: 47, shapeKind: "rectangle" },
+    ],
+  },
+  "feature-right": {
+    label: "Feature right",
+    cells: [
+      { x: 2, y: 2, width: 46, height: 47, shapeKind: "rectangle" },
+      { x: 2, y: 51, width: 46, height: 47, shapeKind: "rectangle" },
+      { x: 52, y: 2, width: 46, height: 96, shapeKind: "rectangle" },
+    ],
+  },
+  "feature-top": {
+    label: "Feature top",
+    cells: [
+      { x: 2, y: 2, width: 96, height: 48, shapeKind: "rectangle" },
+      { x: 2, y: 52, width: 47, height: 46, shapeKind: "rectangle" },
+      { x: 51, y: 52, width: 47, height: 46, shapeKind: "rectangle" },
+    ],
+  },
+  "hero-mosaic": {
+    label: "Hero mosaic",
+    cells: [
+      { x: 2, y: 2, width: 58, height: 96, shapeKind: "rectangle" },
+      { x: 62, y: 2, width: 36, height: 31, shapeKind: "rectangle" },
+      { x: 62, y: 35, width: 36, height: 31, shapeKind: "rectangle" },
+      { x: 62, y: 69, width: 36, height: 29, shapeKind: "rectangle" },
+    ],
+  },
+};
+
+const frameItems: FrameItem[] = [
+  { id: "frame", label: "Frame", icon: LayoutGrid, preset: "frame" },
+  { id: "circle-frame", label: "Circle frame", icon: Circle, preset: "circle-frame" },
+  { id: "rounded-frame", label: "Rounded frame", icon: Square, preset: "rounded-frame" },
+  { id: "2-photos", label: "2 photos", icon: Columns3, preset: "2-photos" },
+  { id: "3-photos", label: "3 photos", icon: Columns3, preset: "3-photos" },
+  { id: "4-photos", label: "4 photos", icon: Grid2x2, preset: "4-photos" },
+  { id: "6-photos", label: "6 photos", icon: Grid3x2, preset: "6-photos" },
+  { id: "9-photos", label: "9 photos", icon: Grid3x3, preset: "9-photos" },
+  { id: "feature-left", label: "Feature left", icon: PanelLeft, preset: "feature-left" },
+  { id: "feature-right", label: "Feature right", icon: PanelRight, preset: "feature-right" },
+  { id: "feature-top", label: "Feature top", icon: PanelTop, preset: "feature-top" },
+  { id: "hero-mosaic", label: "Hero mosaic", icon: PanelsTopLeft, preset: "hero-mosaic" },
 ];
 
 const canvasTools: Array<{ id: EditorTool; label: string; icon: Component }> = [
@@ -188,13 +399,70 @@ const canvasTools: Array<{ id: EditorTool; label: string; icon: Component }> = [
   { id: "image", label: "Image", icon: ImageIcon },
 ];
 
+function cloneDocument(value: EditorDocumentV2): EditorDocumentV2 {
+  return JSON.parse(JSON.stringify(value)) as EditorDocumentV2;
+}
+
 function markDirty(): void {
+  const nextSnapshot = JSON.stringify(document.value);
+  if (nextSnapshot !== historySnapshot) {
+    try {
+      historyPast.value = [
+        ...historyPast.value,
+        cloneDocument(JSON.parse(historySnapshot) as EditorDocumentV2),
+      ].slice(-50);
+      historyFuture.value = [];
+      historySnapshot = nextSnapshot;
+    } catch {
+      historyPast.value = [];
+      historyFuture.value = [];
+      historySnapshot = nextSnapshot;
+    }
+  }
   saveError.value = "";
   saveState.value = "dirty";
   preflightReport.value = null;
   preflightError.value = "";
   exportState.value = "idle";
   exportError.value = "";
+}
+
+function resetHistory(): void {
+  historyPast.value = [];
+  historyFuture.value = [];
+  historySnapshot = JSON.stringify(document.value);
+}
+
+function markHistoryRestore(): void {
+  historySnapshot = JSON.stringify(document.value);
+  const layers = activePage.value.layers;
+  selectedLayerId.value = layers.some((layer) => layer.id === selectedLayerId.value)
+    ? selectedLayerId.value
+    : layers[layers.length - 1]?.id ?? null;
+  activeTool.value = "select";
+  cacheDocument();
+  saveError.value = "";
+  saveState.value = "dirty";
+  preflightReport.value = null;
+  preflightError.value = "";
+  exportState.value = "idle";
+  exportError.value = "";
+}
+
+function undo(): void {
+  const snapshot = historyPast.value.pop();
+  if (!snapshot) return;
+  historyFuture.value.push(cloneDocument(document.value));
+  document.value = cloneDocument(snapshot);
+  markHistoryRestore();
+}
+
+function redo(): void {
+  const snapshot = historyFuture.value.pop();
+  if (!snapshot) return;
+  historyPast.value.push(cloneDocument(document.value));
+  document.value = cloneDocument(snapshot);
+  markHistoryRestore();
 }
 
 function backendAssetUrl(url: string): string {
@@ -223,10 +491,14 @@ function selectPage(side: EditorSide): void {
   activeSide.value = side;
   selectedLayerId.value = null;
   activeTool.value = "select";
+  panX.value = 0;
+  panY.value = 0;
+  paletteExtractionError.value = "";
 }
 
 function selectLayer(layerId: string | null): void {
   selectedLayerId.value = layerId;
+  paletteExtractionError.value = "";
 }
 
 function moveLayer(payload: { layerId: string; x: number; y: number }): void {
@@ -268,11 +540,7 @@ function handleLayerAction(payload: { layerId: string; action: EditorLayerAction
   if (layer.locked) return;
 
   if (payload.action === "duplicate") {
-    const duplicate: EditorLayerV2 = { ...layer };
-    duplicate.id = layer.id + "-copy-" + String(Date.now());
-    duplicate.name = layer.name + " copy";
-    duplicate.x = Math.min(Math.max(0, 100 - duplicate.width), layer.x + 2);
-    duplicate.y = Math.min(Math.max(0, 100 - duplicate.height), layer.y + 2);
+    const duplicate = cloneLayer(layer, 2);
     layers.splice(index + 1, 0, duplicate);
     selectedLayerId.value = duplicate.id;
   } else if (payload.action === "bring-forward" && index < layers.length - 1) {
@@ -281,7 +549,7 @@ function handleLayerAction(payload: { layerId: string; action: EditorLayerAction
     layers.splice(index - 1, 0, layers.splice(index, 1)[0]);
   } else if (payload.action === "delete") {
     layers.splice(index, 1);
-    selectedLayerId.value = null;
+    selectedLayerId.value = layers[index]?.id ?? layers[index - 1]?.id ?? null;
   } else {
     return;
   }
@@ -293,8 +561,47 @@ function clampPercent(value: number, max: number): number {
   return Math.min(Math.max(0, value), Math.max(0, max));
 }
 
+function uniqueIdSuffix(): string {
+  return globalThis.crypto?.randomUUID?.() ?? String(Date.now()) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function cloneLayer(layer: EditorLayerV2, offset: number): EditorLayerV2 {
+  const duplicate = JSON.parse(JSON.stringify(layer)) as EditorLayerV2;
+  duplicate.id = layer.id + "-copy-" + uniqueIdSuffix();
+  duplicate.name = layer.name + " copy";
+  duplicate.x = Math.min(Math.max(0, 100 - duplicate.width), layer.x + offset);
+  duplicate.y = Math.min(Math.max(0, 100 - duplicate.height), layer.y + offset);
+  return duplicate;
+}
+
+function copySelectedLayer(): void {
+  if (!selectedLayer.value) return;
+  internalClipboard.value = JSON.parse(JSON.stringify(selectedLayer.value)) as EditorLayerV2;
+  pasteCount.value = 0;
+}
+
+function pasteCopiedLayer(): void {
+  const copiedLayer = internalClipboard.value;
+  if (!copiedLayer) return;
+  const offset = 2 + (pasteCount.value % 5) * 2;
+  const duplicate = cloneLayer(copiedLayer, offset);
+  activePage.value.layers.push(duplicate);
+  selectedLayerId.value = duplicate.id;
+  pasteCount.value += 1;
+  activeTool.value = "select";
+  markDirty();
+}
+
+function nudgeSelectedLayer(deltaX: number, deltaY: number): void {
+  const layer = selectedLayer.value;
+  if (!layer || layer.locked) return;
+  layer.x = clampPercent(layer.x + deltaX, 100 - layer.width);
+  layer.y = clampPercent(layer.y + deltaY, 100 - layer.height);
+  markDirty();
+}
+
 function addLayer(type: EditorLayerType, source?: string, overrides: Partial<EditorLayerV2> = {}): EditorLayerV2 {
-  const sequence = String(Date.now());
+  const sequence = uniqueIdSuffix();
   const offset = (activePage.value.layers.length % 4) * 3;
   const width = overrides.width ?? (type === "text" ? 46 : type === "image" ? 36 : 28);
   const height = overrides.height ?? (type === "text" ? 14 : type === "image" ? 36 : 28);
@@ -354,19 +661,54 @@ function applyTextPreset(preset: TextPreset): void {
 }
 
 function addShapePreset(preset: ShapePreset): void {
-  if (preset === "ellipse") {
-    addLayer("ellipse");
-  } else {
-    addLayer("rect", undefined, {
-      name: preset === "rounded" ? "Rounded rectangle" : "Rectangle",
-      cornerRadius: preset === "rounded" ? 16 : 0,
+  addLayer(preset === "ellipse" ? "ellipse" : "rect", undefined, {
+    name: preset === "rounded" ? "Rounded rectangle" : preset[0].toUpperCase() + preset.slice(1),
+    shapeKind: preset,
+    cornerRadius: preset === "rounded" ? 16 : 0,
+  });
+  activePanel.value = "elements";
+}
+
+function swapSelectedShape(preset: ShapePreset): void {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return;
+  layer.type = preset === "ellipse" ? "ellipse" : "rect";
+  layer.shapeKind = preset;
+  layer.cornerRadius = preset === "rounded" ? 16 : 0;
+  layer.name = preset === "ellipse"
+    ? "Ellipse"
+    : preset === "rounded"
+      ? "Rounded rectangle"
+      : preset[0].toUpperCase() + preset.slice(1);
+  markDirty();
+}
+
+function addFramePreset(preset: FramePreset): void {
+  const spec = frameSpecs[preset];
+  if (!spec) return;
+  const frameId = activeSide.value + "-frame-" + uniqueIdSuffix();
+  spec.cells.forEach((cell, index) => {
+    addLayer("image", undefined, {
+      id: frameId + "-" + String(index + 1),
+      name: spec.label + " " + String(index + 1),
+      x: cell.x,
+      y: cell.y,
+      width: cell.width,
+      height: cell.height,
+      shapeKind: cell.shapeKind,
+      frameId,
+      fill: "#e4e7ed",
+      stroke: "#c3cad6",
+      strokeWidth: 1,
+      cornerRadius: cell.shapeKind === "rounded" ? 16 : 0,
     });
-  }
+  });
   activePanel.value = "elements";
 }
 
 function openImagePicker(targetLayerId: string | null = null): void {
-  imageTargetLayerId.value = targetLayerId;
+  imageTargetLayerId.value = targetLayerId
+    ?? (selectedLayer.value?.type === "image" ? selectedLayer.value.id : null);
   imageInput.value?.click();
 }
 
@@ -394,6 +736,7 @@ function handleImageFile(event: Event): void {
       target.processedSrc = undefined;
       target.processedAssetId = undefined;
       target.processedStorageKey = undefined;
+      target.extractedPalette = undefined;
       target.pixelWidth = pixelSize.pixelWidth;
       target.pixelHeight = pixelSize.pixelHeight;
       target.visible = true;
@@ -407,6 +750,52 @@ function handleImageFile(event: Event): void {
     }
   });
   reader.readAsDataURL(file);
+}
+
+async function searchIcons8Assets(): Promise<void> {
+  const term = icons8Query.value.trim();
+  icons8Error.value = "";
+  icons8Message.value = "";
+  if (!term) {
+    icons8Results.value = [];
+    icons8Error.value = "Enter an icon name to search.";
+    return;
+  }
+
+  const requestId = ++icons8RequestId;
+  icons8Loading.value = true;
+  try {
+    const response = await searchIcons8(term, "en", icons8Platform.value, 24);
+    if (requestId !== icons8RequestId) return;
+    icons8Results.value = response.icons;
+    icons8Message.value = response.message || "";
+    if (!response.configured) {
+      icons8Error.value = response.message || "Icons8 is not configured on the backend.";
+    }
+  } catch (error) {
+    if (requestId !== icons8RequestId) return;
+    icons8Results.value = [];
+    icons8Error.value = error instanceof Error ? error.message : "Icons8 search failed.";
+  } finally {
+    if (requestId === icons8RequestId) icons8Loading.value = false;
+  }
+}
+
+async function addIcons8Asset(icon: Icons8Icon): Promise<void> {
+  const source = safeImageSource(icon.previewUrl);
+  if (!source) {
+    icons8Error.value = "This Icons8 preview is unavailable.";
+    return;
+  }
+  icons8Error.value = "";
+  const pixelSize = await readImagePixelSize(source);
+  addLayer("image", source, {
+    name: "Icons8 - " + icon.name,
+    width: 28,
+    height: 28,
+    ...pixelSize,
+  });
+  activePanel.value = "icons8";
 }
 
 async function removeBackgroundFromSelected(): Promise<void> {
@@ -430,6 +819,7 @@ async function removeBackgroundFromSelected(): Promise<void> {
     layer.processedAssetId = processed.assetId;
     layer.processedStorageKey = processed.storageKey;
     layer.src = processedSource;
+    layer.extractedPalette = undefined;
     layer.name = layer.name.replace(/ \(no background\)$/, "") + " (no background)";
     markDirty();
   } catch (unknownError) {
@@ -446,6 +836,34 @@ function restoreOriginalImage(): void {
   if (!layer || layer.type !== "image" || !layer.originalSrc) return;
   layer.src = layer.originalSrc;
   markDirty();
+}
+
+async function extractPaletteFromSelected(): Promise<void> {
+  const layer = selectedLayer.value;
+  if (!layer || layer.type !== "image" || paletteExtractingLayerId.value) return;
+  const source = safeImageSource(layer.src);
+  if (!source) {
+    paletteExtractionError.value = "This image has no safe source for color extraction.";
+    return;
+  }
+
+  const side = activeSide.value;
+  const layerId = layer.id;
+  paletteExtractionError.value = "";
+  paletteExtractingLayerId.value = layerId;
+  try {
+    const palette = await extractImagePalette(backendAssetUrl(source));
+    const target = document.value.pages[side].layers.find((item) => item.id === layerId && item.type === "image");
+    if (!target) return;
+    target.extractedPalette = palette;
+    markDirty();
+  } catch (unknownError) {
+    paletteExtractionError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot extract colors from this image.";
+  } finally {
+    paletteExtractingLayerId.value = null;
+  }
 }
 
 function activateTool(tool: EditorTool): void {
@@ -469,8 +887,212 @@ function layerIcon(layer: EditorLayerV2): Component {
   return Square;
 }
 
+function clampZoom(value: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(value)));
+}
+
+function setZoom(value: number, resetPan = true): void {
+  zoom.value = clampZoom(value);
+  if (resetPan) {
+    panX.value = 0;
+    panY.value = 0;
+  }
+  zoomMenuOpen.value = false;
+}
+
 function updateZoom(delta: number): void {
-  zoom.value = Math.min(160, Math.max(50, zoom.value + delta));
+  zoom.value = clampZoom(zoom.value + delta);
+}
+
+function canvasMetrics(): {
+  availableWidth: number;
+  availableHeight: number;
+  baseWidth: number;
+  baseHeight: number;
+} | null {
+  const frame = canvasFrame.value;
+  const canvas = frame?.querySelector<HTMLElement>("[data-editor-v2-canvas]");
+  const stage = frame?.closest<HTMLElement>(".editor-v2__stage");
+  if (!frame || !canvas || !stage || canvas.offsetWidth <= 0 || canvas.offsetHeight <= 0) return null;
+
+  const style = window.getComputedStyle(stage);
+  const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+  const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+  const headingHeight = stage.querySelector<HTMLElement>(".editor-v2__card-heading")?.offsetHeight ?? 0;
+  const gap = Number.parseFloat(style.rowGap || style.gap) || 0;
+  return {
+    availableWidth: Math.max(1, stage.clientWidth - horizontalPadding),
+    availableHeight: Math.max(1, stage.clientHeight - verticalPadding - headingHeight - gap),
+    baseWidth: canvas.offsetWidth,
+    baseHeight: canvas.offsetHeight,
+  };
+}
+
+function fitCard(): void {
+  const metrics = canvasMetrics();
+  if (!metrics) return;
+  const target = Math.min(
+    metrics.availableWidth / metrics.baseWidth,
+    metrics.availableHeight / metrics.baseHeight,
+  ) * 100;
+  setZoom(target);
+}
+
+function zoomToSelection(): void {
+  const layer = selectedLayer.value;
+  const metrics = canvasMetrics();
+  if (!layer || !metrics) return;
+
+  const width = metrics.baseWidth * layer.width / 100;
+  const height = metrics.baseHeight * layer.height / 100;
+  const radians = layer.rotation * Math.PI / 180;
+  const rotatedWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+  const rotatedHeight = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians));
+  const target = Math.min(
+    metrics.availableWidth * 0.72 / Math.max(1, rotatedWidth),
+    metrics.availableHeight * 0.72 / Math.max(1, rotatedHeight),
+  ) * 100;
+  zoom.value = clampZoom(target);
+  const scale = zoom.value / 100;
+  const centerX = metrics.baseWidth * (layer.x + layer.width / 2) / 100;
+  const centerY = metrics.baseHeight * (layer.y + layer.height / 2) / 100;
+  panX.value = (metrics.baseWidth / 2 - centerX) * scale;
+  panY.value = (metrics.baseHeight / 2 - centerY) * scale;
+  zoomMenuOpen.value = false;
+}
+
+function handleZoomMenuPointerDown(event: PointerEvent): void {
+  if (!zoomControl.value?.contains(event.target as Node)) zoomMenuOpen.value = false;
+}
+
+function handleZoomMenuKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") zoomMenuOpen.value = false;
+}
+
+function isEditingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && Boolean(target.closest("input, textarea, select, [contenteditable=true]"));
+}
+
+function handleEditorKeydown(event: KeyboardEvent): void {
+  const key = event.key.toLowerCase();
+  const code = event.code.toLowerCase();
+  const modifier = event.ctrlKey || event.metaKey;
+
+  if (key === "escape") {
+    zoomMenuOpen.value = false;
+    if (!isEditingTarget(event.target)) selectedLayerId.value = null;
+    return;
+  }
+  if (isEditingTarget(event.target)) return;
+
+  if (modifier && key === "z") {
+    event.preventDefault();
+    if (event.shiftKey) redo(); else undo();
+    return;
+  }
+  if (modifier && key === "y") {
+    event.preventDefault();
+    redo();
+    return;
+  }
+  if (modifier && key === "s") {
+    event.preventDefault();
+    void saveDraft();
+    return;
+  }
+  if (modifier && key === "c") {
+    event.preventDefault();
+    copySelectedLayer();
+    return;
+  }
+  if (modifier && key === "v") {
+    event.preventDefault();
+    pasteCopiedLayer();
+    return;
+  }
+  if (modifier && key === "d") {
+    event.preventDefault();
+    if (selectedLayer.value) handleLayerAction({ layerId: selectedLayer.value.id, action: "duplicate" });
+    return;
+  }
+  if (modifier && (key === "=" || key === "+" || code === "numpadadd")) {
+    event.preventDefault();
+    updateZoom(10);
+    return;
+  }
+  if (modifier && (key === "-" || key === "_" || code === "numpadsubtract")) {
+    event.preventDefault();
+    updateZoom(-10);
+    return;
+  }
+  if (modifier && key === "0") {
+    event.preventDefault();
+    fitCard();
+    return;
+  }
+
+  if (key === "delete" || key === "backspace") {
+    event.preventDefault();
+    if (selectedLayer.value) handleLayerAction({ layerId: selectedLayer.value.id, action: "delete" });
+    return;
+  }
+  if (key === "arrowleft" || key === "arrowright" || key === "arrowup" || key === "arrowdown") {
+    event.preventDefault();
+    const step = event.shiftKey ? 2.5 : 0.5;
+    const deltaX = key === "arrowleft" ? -step : key === "arrowright" ? step : 0;
+    const deltaY = key === "arrowup" ? -step : key === "arrowdown" ? step : 0;
+    nudgeSelectedLayer(deltaX, deltaY);
+    return;
+  }
+  if (key === "[" || key === "]") {
+    if (selectedLayer.value) {
+      event.preventDefault();
+      handleLayerAction({
+        layerId: selectedLayer.value.id,
+        action: key === "]" ? "bring-forward" : "send-backward",
+      });
+    }
+    return;
+  }
+  if (key === "+" || key === "=" || code === "numpadadd") {
+    event.preventDefault();
+    updateZoom(10);
+    return;
+  }
+  if (key === "-" || key === "_" || code === "numpadsubtract") {
+    event.preventDefault();
+    updateZoom(-10);
+    return;
+  }
+  if (key === "1") {
+    event.preventDefault();
+    setZoom(100);
+    return;
+  }
+  if (key === "2" && selectedLayer.value) {
+    event.preventDefault();
+    zoomToSelection();
+    return;
+  }
+  if (key === "v") {
+    activeTool.value = "select";
+    return;
+  }
+  if (key === "t") {
+    event.preventDefault();
+    activateTool("text");
+    return;
+  }
+  if (key === "r") {
+    event.preventDefault();
+    activateTool("rect");
+    return;
+  }
+  if (key === "o") {
+    event.preventDefault();
+    activateTool("ellipse");
+  }
 }
 
 function updateSelectedText(event: Event): void {
@@ -521,6 +1143,130 @@ function setSelectedFill(color: string): void {
   const layer = selectedLayer.value;
   if (!layer || layer.type === "image") return;
   layer.fill = color;
+  if (layer.type === "rect" || layer.type === "ellipse") layer.fillMode = "solid";
+  markDirty();
+}
+
+function ensureGradientStops(layer: EditorLayerV2): EditorGradientStopV2[] {
+  if (!layer.gradientStops || layer.gradientStops.length < 2) {
+    layer.gradientStops = createDefaultGradientStops(layer.fill);
+  }
+  return layer.gradientStops;
+}
+
+function setSelectedFillMode(mode: "solid" | "gradient"): void {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return;
+  if (mode === "solid") {
+    layer.fillMode = "solid";
+  } else {
+    layer.fillMode = layer.fillMode === "radial" ? "radial" : "linear";
+    ensureGradientStops(layer);
+    layer.gradientAngle ??= 90;
+    layer.gradientCenterX ??= 50;
+    layer.gradientCenterY ??= 50;
+    layer.gradientRadius ??= 70;
+  }
+  markDirty();
+}
+
+function setSelectedGradientKind(mode: "linear" | "radial"): void {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return;
+  layer.fillMode = mode;
+  ensureGradientStops(layer);
+  layer.gradientAngle ??= 90;
+  layer.gradientCenterX ??= 50;
+  layer.gradientCenterY ??= 50;
+  layer.gradientRadius ??= 70;
+  markDirty();
+}
+
+function updateSelectedGradientNumber(field: GradientNumberField, event: Event): void {
+  const layer = selectedLayer.value;
+  const value = Number((event.target as HTMLInputElement).value);
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse") || !Number.isFinite(value)) return;
+  if (field === "gradientAngle") layer.gradientAngle = Math.min(360, Math.max(0, value));
+  if (field === "gradientCenterX") layer.gradientCenterX = Math.min(100, Math.max(0, value));
+  if (field === "gradientCenterY") layer.gradientCenterY = Math.min(100, Math.max(0, value));
+  if (field === "gradientRadius") layer.gradientRadius = Math.min(200, Math.max(1, value));
+  markDirty();
+}
+
+function updateGradientStop(index: number, field: keyof EditorGradientStopV2, event: Event): void {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return;
+  const stops = ensureGradientStops(layer);
+  const stop = stops[index];
+  if (!stop) return;
+  if (field === "color") {
+    stop.color = (event.target as HTMLInputElement).value;
+  } else {
+    const value = Number((event.target as HTMLInputElement).value);
+    if (!Number.isFinite(value)) return;
+    stop[field] = Math.min(1, Math.max(0, value / 100));
+  }
+  layer.gradientStops = [...stops];
+  markDirty();
+}
+
+function addGradientStop(): void {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return;
+  const stops = ensureGradientStops(layer);
+  if (stops.length >= 4) return;
+  layer.gradientStops = [...stops, { color: "#ffffff", offset: 0.5, opacity: 1 }];
+  markDirty();
+}
+
+function removeGradientStop(index: number): void {
+  const layer = selectedLayer.value;
+  if (!layer || !layer.gradientStops || layer.gradientStops.length <= 2) return;
+  layer.gradientStops = layer.gradientStops.filter((_, stopIndex) => stopIndex !== index);
+  markDirty();
+}
+
+function setSelectedShapeEffect(effect: EditorShapeEffect): void {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return;
+  const previousEffect = layer.shapeEffect ?? "none";
+  layer.shapeEffect = effect;
+  if (effect === "hollow") {
+    layer.stroke ??= "#111827";
+    layer.strokeWidth = Math.max(2, layer.strokeWidth ?? 0);
+  } else if (effect === "shadow" && previousEffect !== "shadow") {
+    layer.shadowX = 0;
+    layer.shadowY = 4;
+    layer.shadowBlur = 16;
+    layer.shadowSpread = 0;
+    layer.shadowColor = "#111827";
+    layer.shadowOpacity = 0.35;
+  } else if (effect === "glow" && previousEffect !== "glow") {
+    layer.shadowX = 0;
+    layer.shadowY = 0;
+    layer.shadowBlur = 16;
+    layer.shadowSpread = 0;
+    layer.shadowColor = layer.fill ?? "#3b82f6";
+    layer.shadowOpacity = 0.7;
+  }
+  markDirty();
+}
+
+function updateSelectedEffectNumber(field: EffectNumberField, event: Event): void {
+  const layer = selectedLayer.value;
+  const value = Number((event.target as HTMLInputElement).value);
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse") || !Number.isFinite(value)) return;
+  if (field === "shadowX") layer.shadowX = Math.min(100, Math.max(-100, value));
+  if (field === "shadowY") layer.shadowY = Math.min(100, Math.max(-100, value));
+  if (field === "shadowBlur") layer.shadowBlur = Math.min(100, Math.max(0, value));
+  if (field === "shadowOpacity") layer.shadowOpacity = Math.min(1, Math.max(0, value / 100));
+  markDirty();
+}
+
+function updateSelectedEffectColor(event: Event): void {
+  const layer = selectedLayer.value;
+  if (!layer || (layer.type !== "rect" && layer.type !== "ellipse")) return;
+  layer.shadowColor = (event.target as HTMLInputElement).value;
   markDirty();
 }
 
@@ -543,10 +1289,12 @@ function updateSelectedFont(event: Event): void {
   const layer = selectedLayer.value;
   if (!layer || layer.type !== "text") return;
   layer.fontFamily = (event.target as HTMLSelectElement).value;
+  loadFont(layer.fontFamily);
   markDirty();
 }
 
 function setSelectedFont(fontFamily: string): void {
+  loadFont(fontFamily);
   const layer = selectedLayer.value;
   if (layer?.type === "text") {
     layer.fontFamily = fontFamily;
@@ -555,6 +1303,23 @@ function setSelectedFont(fontFamily: string): void {
     addLayer("text", undefined, { fontFamily });
     activePanel.value = "text";
   }
+}
+
+function normalizeFontSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .trim();
+}
+
+function loadFont(fontFamily: string): void {
+  const family = fontFamily.includes(",") ? fontFamily : JSON.stringify(fontFamily);
+  void window.document.fonts?.load(`16px ${family}`).catch(() => undefined);
+}
+
+function showMoreFonts(): void {
+  fontResultLimit.value += 40;
 }
 
 function updateSelectedWeight(event: Event): void {
@@ -588,13 +1353,6 @@ function setPageBackground(color: string): void {
   markDirty();
 }
 
-function applyBrandColor(color: string): void {
-  if (selectedLayer.value && selectedLayer.value.type !== "image") {
-    setSelectedFill(color);
-  } else {
-    setPageBackground(color);
-  }
-}
 
 function toggleLayerVisibility(layer: EditorLayerV2): void {
   layer.visible = !layer.visible;
@@ -649,6 +1407,7 @@ async function saveDraft(): Promise<void> {
   cacheDocument();
   const designId = backendDesignId.value;
   if (!designId) {
+    resetHistory();
     finishSavedState();
     return;
   }
@@ -659,6 +1418,7 @@ async function saveDraft(): Promise<void> {
     const saved = await updateDesign(designId, document.value.name, JSON.stringify(document.value));
     document.value.name = saved.name;
     cacheDocument();
+    resetHistory();
     finishSavedState();
   } catch (unknownError) {
     saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot save draft";
@@ -763,6 +1523,7 @@ async function loadInitialDocument(): Promise<void> {
   const designId = backendDesignId.value;
   if (!designId) {
     if (localDocument) document.value = localDocument;
+    resetHistory();
     selectedLayerId.value = null;
     return;
   }
@@ -783,10 +1544,12 @@ async function loadInitialDocument(): Promise<void> {
       nextDocument.card.heightMm = design.heightMm;
     }
     document.value = nextDocument;
+    resetHistory();
     cacheDocument();
     saveState.value = remoteDocument?.documentId === documentId.value ? "idle" : "dirty";
   } catch (unknownError) {
     if (localDocument) document.value = localDocument;
+    resetHistory();
     saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot load draft";
     saveState.value = "error";
   } finally {
@@ -799,8 +1562,21 @@ watch(activeSide, () => {
   if (!current) selectedLayerId.value = null;
 });
 
+watch(fontSearch, () => {
+  fontResultLimit.value = 40;
+});
+
 onMounted(() => {
+  window.addEventListener("pointerdown", handleZoomMenuPointerDown);
+  window.addEventListener("keydown", handleZoomMenuKeydown);
+  window.addEventListener("keydown", handleEditorKeydown);
   void loadInitialDocument();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("pointerdown", handleZoomMenuPointerDown);
+  window.removeEventListener("keydown", handleZoomMenuKeydown);
+  window.removeEventListener("keydown", handleEditorKeydown);
 });
 </script>
 
@@ -829,10 +1605,24 @@ onMounted(() => {
       </div>
 
       <div class="editor-v2__header-center" aria-label="History and status">
-        <button type="button" aria-label="Undo" title="Undo" disabled>
+        <button
+          type="button"
+          aria-label="Undo"
+          title="Undo (Ctrl/Cmd+Z)"
+          aria-keyshortcuts="Control+Z Meta+Z"
+          :disabled="!canUndo"
+          @click="undo"
+        >
           <Undo2 :size="17" :stroke-width="1.8" aria-hidden="true" />
         </button>
-        <button type="button" aria-label="Redo" title="Redo" disabled>
+        <button
+          type="button"
+          aria-label="Redo"
+          title="Redo (Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z)"
+          aria-keyshortcuts="Control+Y Control+Shift+Z Meta+Y Meta+Shift+Z"
+          :disabled="!canRedo"
+          @click="redo"
+        >
           <Redo2 :size="17" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <span class="editor-v2__status-dot" aria-hidden="true" />
@@ -959,6 +1749,25 @@ onMounted(() => {
             </div>
           </section>
 
+          <section class="editor-v2__element-section">
+            <div class="editor-v2__section-label">
+              <span>Frames &amp; grids</span>
+              <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
+            </div>
+            <div class="editor-v2__shape-grid editor-v2__frame-grid">
+              <button
+                v-for="frame in frameItems"
+                :key="frame.id"
+                type="button"
+                :aria-label="'Add ' + frame.label"
+                @click="addFramePreset(frame.preset)"
+              >
+                <component :is="frame.icon" :size="29" :stroke-width="1.5" aria-hidden="true" />
+                <span>{{ frame.label }}</span>
+              </button>
+            </div>
+          </section>
+
           <section class="editor-v2__element-section editor-v2__element-section--compact">
             <div class="editor-v2__section-label">
               <span>Media</span>
@@ -999,16 +1808,31 @@ onMounted(() => {
               <span>Fonts</span>
               <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
             </div>
+            <label class="editor-v2__font-search">
+              <Search :size="15" :stroke-width="1.7" aria-hidden="true" />
+              <input v-model="fontSearch" type="search" placeholder="Search fonts" aria-label="Search fonts">
+              <span>{{ filteredFontOptions.length }}</span>
+            </label>
             <div class="editor-v2__font-list">
               <button
-                v-for="font in fontOptions"
+                v-for="font in visibleFontOptions"
                 :key="font.value"
                 type="button"
+                :class="{ active: selectedLayer?.type === 'text' && selectedLayer.fontFamily === font.value }"
                 :style="{ fontFamily: font.value }"
                 @click="setSelectedFont(font.value)"
               >
                 <span>{{ font.label }}</span>
-                <small>{{ font.label === 'Georgia' ? 'Serif' : 'Sans-serif' }}</small>
+                <small>{{ font.kind }}</small>
+              </button>
+              <div v-if="!visibleFontOptions.length" class="editor-v2__panel-empty">No fonts found.</div>
+              <button
+                v-if="hiddenFontCount"
+                class="editor-v2__font-more"
+                type="button"
+                @click="showMoreFonts"
+              >
+                Show more ({{ hiddenFontCount }})
               </button>
             </div>
           </section>
@@ -1048,31 +1872,66 @@ onMounted(() => {
           </section>
         </template>
 
-        <template v-else-if="activePanel === 'brand'">
+        <template v-else-if="activePanel === 'icons8'">
           <section class="editor-v2__element-section">
             <div class="editor-v2__section-label">
-              <span>Brand colors</span>
+              <span>Icons8 library</span>
               <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
             </div>
-            <div class="editor-v2__brand-swatches">
-              <button
-                v-for="color in palettes"
-                :key="color"
-                type="button"
-                :style="{ background: color }"
-                :aria-label="'Apply ' + color"
-                :title="color"
-                @click="applyBrandColor(color)"
-              />
+            <form class="editor-v2__icons8-search" @submit.prevent="searchIcons8Assets">
+              <input
+                v-model="icons8Query"
+                type="search"
+                aria-label="Search Icons8 icons"
+                placeholder="Search icons"
+                maxlength="80"
+              >
+              <select v-model="icons8Platform" aria-label="Icons8 style">
+                <option v-for="option in icons8PlatformOptions" :key="option.value || 'all'" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+              <button type="submit" :disabled="icons8Loading">
+                {{ icons8Loading ? "Searching..." : "Search" }}
+              </button>
+            </form>
+            <a
+              class="editor-v2__icons8-credit"
+              href="https://icons8.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Icons by Icons8
+            </a>
+            <span v-if="icons8Error" class="editor-v2__icons8-status editor-v2__icons8-status--error">{{ icons8Error }}</span>
+            <span v-else-if="icons8Message" class="editor-v2__icons8-status">{{ icons8Message }}</span>
+          </section>
+
+          <section v-if="icons8Results.length" class="editor-v2__element-section">
+            <div class="editor-v2__section-label">
+              <span>Results</span>
+              <span>{{ icons8Results.length }}</span>
+            </div>
+            <div class="editor-v2__icons8-grid">
+              <article v-for="icon in icons8Results" :key="icon.id + '-' + icon.platform" class="editor-v2__icons8-card">
+                <button
+                  class="editor-v2__icons8-preview"
+                  type="button"
+                  :aria-label="'Add ' + icon.name + ' icon'"
+                  :title="'Add ' + icon.name"
+                  @click="addIcons8Asset(icon)"
+                >
+                  <img :src="icon.previewUrl" :alt="icon.name" loading="lazy">
+                </button>
+                <div class="editor-v2__icons8-meta">
+                  <strong>{{ icon.name }}</strong>
+                  <span>{{ icon.platform || 'Icons8' }}</span>
+                </div>
+                <button class="editor-v2__icons8-add" type="button" @click="addIcons8Asset(icon)">Add</button>
+              </article>
             </div>
           </section>
-          <section class="editor-v2__brand-summary">
-            <Palette :size="21" :stroke-width="1.6" aria-hidden="true" />
-            <div>
-              <strong>Vizi palette</strong>
-              <span>Apply to the selected element or page.</span>
-            </div>
-          </section>
+          <div v-else-if="!icons8Loading" class="editor-v2__panel-empty">Search for an icon to add it to the card.</div>
         </template>
 
         <template v-else-if="activePanel === 'layers'">
@@ -1152,11 +2011,13 @@ onMounted(() => {
             </div>
             <span class="editor-v2__card-size">{{ document.card.widthMm }} x {{ document.card.heightMm }} mm</span>
           </div>
-          <div class="editor-v2__canvas-frame">
+          <div ref="canvasFrame" class="editor-v2__canvas-frame">
             <EditorCanvasV2
               :document="document"
               :page="activePage"
               :zoom="zoom"
+              :pan-x="panX"
+              :pan-y="panY"
               :show-guides="showPrintGuides"
               :selected-layer-id="selectedLayerId"
               @select-layer="selectLayer"
@@ -1168,12 +2029,35 @@ onMounted(() => {
           </div>
         </div>
 
-        <div class="editor-v2__zoom" aria-label="Canvas zoom">
+        <div ref="zoomControl" class="editor-v2__zoom" aria-label="Canvas zoom">
+          <div v-if="zoomMenuOpen" class="editor-v2__zoom-menu" role="menu" aria-label="Zoom options">
+            <button
+              v-for="preset in zoomPresets"
+              :key="preset"
+              type="button"
+              role="menuitem"
+              :class="{ active: zoom === preset }"
+              @click="setZoom(preset)"
+            >
+              {{ preset }}%
+            </button>
+            <span class="editor-v2__zoom-menu-divider" aria-hidden="true" />
+            <button type="button" role="menuitem" @click="fitCard">Fit card</button>
+            <button type="button" role="menuitem" :disabled="!selectedLayer" @click="zoomToSelection">Zoom to selection</button>
+          </div>
           <button type="button" aria-label="Zoom out" title="Zoom out" @click="updateZoom(-10)">
             <Minus :size="15" :stroke-width="2" aria-hidden="true" />
           </button>
-          <button type="button" class="editor-v2__zoom-value" title="Reset zoom" @click="zoom = 100">
-            {{ zoom }}%
+          <button
+            type="button"
+            class="editor-v2__zoom-value"
+            aria-haspopup="menu"
+            :aria-expanded="zoomMenuOpen"
+            title="Zoom options"
+            @click.stop="zoomMenuOpen = !zoomMenuOpen"
+          >
+            <span>{{ zoom }}%</span>
+            <ChevronDown :size="11" :stroke-width="1.8" aria-hidden="true" />
           </button>
           <button type="button" aria-label="Zoom in" title="Zoom in" @click="updateZoom(10)">
             <Plus :size="15" :stroke-width="2" aria-hidden="true" />
@@ -1324,6 +2208,31 @@ onMounted(() => {
               <strong>Image</strong>
               <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
             </div>
+            <button
+              class="editor-v2__secondary-panel-action"
+              type="button"
+              :disabled="paletteExtractingLayerId === selectedLayer.id"
+              @click="extractPaletteFromSelected"
+            >
+              <Palette :size="15" :stroke-width="1.8" aria-hidden="true" />
+              <span>
+                {{ paletteExtractingLayerId === selectedLayer.id
+                  ? "Extracting colors..."
+                  : selectedLayer.extractedPalette?.length
+                    ? "Re-extract palette"
+                    : "Extract palette" }}
+              </span>
+            </button>
+            <div v-if="selectedLayer.extractedPalette?.length" class="editor-v2__image-palette" aria-label="Extracted image palette">
+              <span
+                v-for="color in selectedLayer.extractedPalette"
+                :key="color"
+                :style="{ background: color }"
+                :title="color.toUpperCase()"
+                :data-palette-color="color"
+              />
+            </div>
+            <span v-if="paletteExtractionError" class="editor-v2__image-error">{{ paletteExtractionError }}</span>
             <div class="editor-v2__image-inspector-preview">
               <img :src="safeImageSource(selectedLayer.src)" :alt="selectedLayer.name">
             </div>
@@ -1359,6 +2268,20 @@ onMounted(() => {
               <strong>Shape</strong>
               <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
             </div>
+            <div class="editor-v2__shape-swap" role="group" aria-label="Swap shape">
+              <button
+                v-for="shape in shapeItems"
+                :key="shape.id"
+                type="button"
+                :class="{ active: selectedShapePreset === shape.preset }"
+                :aria-pressed="selectedShapePreset === shape.preset"
+                :aria-label="'Swap to ' + (shape.preset === 'rounded' ? 'rounded rectangle' : shape.label.toLowerCase())"
+                :title="shape.label"
+                @click="swapSelectedShape(shape.preset)"
+              >
+                <component :is="shape.icon" :class="{ 'editor-v2__rounded-shape-icon': shape.preset === 'rounded' }" :size="17" :stroke-width="1.8" aria-hidden="true" />
+              </button>
+            </div>
             <div class="editor-v2__selected-name">{{ selectedLayer.name }}</div>
           </section>
 
@@ -1367,21 +2290,144 @@ onMounted(() => {
               <strong>Fill</strong>
               <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
             </div>
-            <div class="editor-v2__fill-control">
-              <input :value="selectedLayer.fill ?? '#ffffff'" type="color" aria-label="Fill color" @input="updateSelectedFill">
-              <span>{{ (selectedLayer.fill ?? "#ffffff").toUpperCase() }}</span>
-            </div>
-            <div class="editor-v2__swatches" aria-label="Color palette">
+            <div
+              v-if="selectedLayer.type === 'rect' || selectedLayer.type === 'ellipse'"
+              class="editor-v2__fill-mode"
+              role="group"
+              aria-label="Fill mode"
+            >
               <button
-                v-for="color in palettes"
-                :key="color"
                 type="button"
-                :style="{ background: color }"
-                :aria-label="'Use ' + color"
-                :title="color"
-                @click="setSelectedFill(color)"
-              />
+                :class="{ active: selectedShapeFillMode === 'solid' }"
+                :aria-pressed="selectedShapeFillMode === 'solid'"
+                @click="setSelectedFillMode('solid')"
+              >
+                Solid
+              </button>
+              <button
+                type="button"
+                :class="{ active: selectedShapeFillMode !== 'solid' }"
+                :aria-pressed="selectedShapeFillMode !== 'solid'"
+                @click="setSelectedFillMode('gradient')"
+              >
+                Gradient
+              </button>
             </div>
+            <template v-if="selectedLayer.type === 'text' || selectedShapeFillMode === 'solid'">
+              <div class="editor-v2__fill-control">
+                <input :value="selectedLayer.fill ?? '#ffffff'" type="color" aria-label="Fill color" @input="updateSelectedFill">
+                <span>{{ (selectedLayer.fill ?? "#ffffff").toUpperCase() }}</span>
+              </div>
+              <div class="editor-v2__swatches" aria-label="Color palette">
+                <button
+                  v-for="color in availablePalettes"
+                  :key="color"
+                  type="button"
+                  :style="{ background: color }"
+                  :aria-label="'Use ' + color"
+                  :title="color"
+                  @click="setSelectedFill(color)"
+                />
+              </div>
+            </template>
+            <template v-else>
+              <div class="editor-v2__gradient-kind" role="group" aria-label="Gradient type">
+                <button
+                  type="button"
+                  :class="{ active: selectedShapeFillMode === 'linear' }"
+                  :aria-pressed="selectedShapeFillMode === 'linear'"
+                  @click="setSelectedGradientKind('linear')"
+                >
+                  Linear
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: selectedShapeFillMode === 'radial' }"
+                  :aria-pressed="selectedShapeFillMode === 'radial'"
+                  @click="setSelectedGradientKind('radial')"
+                >
+                  Radial
+                </button>
+              </div>
+              <div class="editor-v2__gradient-preview" :style="{ background: shapeFillBackground(selectedLayer) }" aria-hidden="true" />
+              <label v-if="selectedShapeFillMode === 'linear'" class="editor-v2__field-row">
+                <span>Angle</span>
+                <input
+                  :value="selectedLayer.gradientAngle ?? 90"
+                  type="number"
+                  min="0"
+                  max="360"
+                  step="1"
+                  aria-label="Gradient angle"
+                  @input="updateSelectedGradientNumber('gradientAngle', $event)"
+                >
+              </label>
+              <div v-else class="editor-v2__gradient-geometry">
+                <label>
+                  <span>Center X</span>
+                  <input :value="selectedLayer.gradientCenterX ?? 50" type="number" min="0" max="100" aria-label="Gradient center X" @input="updateSelectedGradientNumber('gradientCenterX', $event)">
+                </label>
+                <label>
+                  <span>Center Y</span>
+                  <input :value="selectedLayer.gradientCenterY ?? 50" type="number" min="0" max="100" aria-label="Gradient center Y" @input="updateSelectedGradientNumber('gradientCenterY', $event)">
+                </label>
+                <label>
+                  <span>Radius</span>
+                  <input :value="selectedLayer.gradientRadius ?? 70" type="number" min="1" max="200" aria-label="Gradient radius" @input="updateSelectedGradientNumber('gradientRadius', $event)">
+                </label>
+              </div>
+              <div class="editor-v2__gradient-stops">
+                <div v-for="(stop, stopIndex) in selectedGradientStops" :key="stopIndex" class="editor-v2__gradient-stop">
+                  <input
+                    :value="stop.color"
+                    type="color"
+                    :aria-label="`Gradient stop ${stopIndex + 1} color`"
+                    @input="updateGradientStop(stopIndex, 'color', $event)"
+                  >
+                  <label>
+                    <span>Position</span>
+                    <input
+                      :value="Math.round(stop.offset * 100)"
+                      type="number"
+                      min="0"
+                      max="100"
+                      :aria-label="`Gradient stop ${stopIndex + 1} position`"
+                      @input="updateGradientStop(stopIndex, 'offset', $event)"
+                    >
+                  </label>
+                  <label>
+                    <span>Opacity</span>
+                    <input
+                      :value="Math.round(stop.opacity * 100)"
+                      type="number"
+                      min="0"
+                      max="100"
+                      :aria-label="`Gradient stop ${stopIndex + 1} opacity`"
+                      @input="updateGradientStop(stopIndex, 'opacity', $event)"
+                    >
+                  </label>
+                  <button
+                    type="button"
+                    :disabled="(selectedLayer.gradientStops?.length ?? 0) <= 2"
+                    :aria-label="`Remove gradient stop ${stopIndex + 1}`"
+                    title="Remove stop"
+                    @click="removeGradientStop(stopIndex)"
+                  >
+                    <Minus :size="14" :stroke-width="1.8" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+              <button
+                class="editor-v2__gradient-add"
+                type="button"
+                :disabled="selectedGradientStops.length >= 4"
+                aria-label="Add gradient stop"
+                @click="addGradientStop"
+              >
+                <Plus :size="14" :stroke-width="1.8" aria-hidden="true" />
+                <span>Add stop</span>
+              </button>
+            </template>
           </section>
 
           <section v-if="selectedLayer.type === 'rect' || selectedLayer.type === 'ellipse'" class="editor-v2__inspector-section">
@@ -1420,6 +2466,69 @@ onMounted(() => {
               <span>Rotation</span>
               <input :value="selectedLayer.rotation" type="number" min="0" max="359" step="1" aria-label="Rotation" @input="updateSelectedNumber('rotation', $event)">
             </label>
+          </section>
+
+          <section v-if="selectedLayer.type === 'rect' || selectedLayer.type === 'ellipse'" class="editor-v2__inspector-section">
+            <div class="editor-v2__inspector-section-title">
+              <strong>Effects</strong>
+              <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
+            </div>
+            <div class="editor-v2__effect-modes" role="group" aria-label="Shape effect">
+              <button
+                v-for="effect in (['none', 'shadow', 'hollow', 'glow'] as const)"
+                :key="effect"
+                type="button"
+                :class="{ active: selectedShapeEffect === effect }"
+                :aria-pressed="selectedShapeEffect === effect"
+                @click="setSelectedShapeEffect(effect)"
+              >
+                {{ effect.charAt(0).toUpperCase() + effect.slice(1) }}
+              </button>
+            </div>
+            <template v-if="selectedShapeEffect === 'shadow'">
+              <div class="editor-v2__effect-grid">
+                <label class="editor-v2__effect-color">
+                  <span>Color</span>
+                  <input :value="selectedLayer.shadowColor ?? '#111827'" type="color" aria-label="Shadow color" @input="updateSelectedEffectColor">
+                </label>
+                <label>
+                  <span>X</span>
+                  <input :value="selectedLayer.shadowX ?? 0" type="number" min="-100" max="100" aria-label="Shadow X" @input="updateSelectedEffectNumber('shadowX', $event)">
+                </label>
+                <label>
+                  <span>Y</span>
+                  <input :value="selectedLayer.shadowY ?? 4" type="number" min="-100" max="100" aria-label="Shadow Y" @input="updateSelectedEffectNumber('shadowY', $event)">
+                </label>
+                <label>
+                  <span>Blur</span>
+                  <input :value="selectedLayer.shadowBlur ?? 16" type="number" min="0" max="100" aria-label="Shadow blur" @input="updateSelectedEffectNumber('shadowBlur', $event)">
+                </label>
+                <label>
+                  <span>Opacity</span>
+                  <input :value="Math.round((selectedLayer.shadowOpacity ?? 0.35) * 100)" type="number" min="0" max="100" aria-label="Shadow opacity" @input="updateSelectedEffectNumber('shadowOpacity', $event)">
+                </label>
+              </div>
+            </template>
+            <template v-else-if="selectedShapeEffect === 'glow'">
+              <div class="editor-v2__effect-grid editor-v2__effect-grid--glow">
+                <label class="editor-v2__effect-color">
+                  <span>Color</span>
+                  <input :value="selectedLayer.shadowColor ?? selectedLayer.fill ?? '#3b82f6'" type="color" aria-label="Glow color" @input="updateSelectedEffectColor">
+                </label>
+                <label>
+                  <span>Size</span>
+                  <input :value="selectedLayer.shadowBlur ?? 16" type="number" min="0" max="100" aria-label="Glow size" @input="updateSelectedEffectNumber('shadowBlur', $event)">
+                </label>
+                <label>
+                  <span>Opacity</span>
+                  <input :value="Math.round((selectedLayer.shadowOpacity ?? 0.7) * 100)" type="number" min="0" max="100" aria-label="Glow opacity" @input="updateSelectedEffectNumber('shadowOpacity', $event)">
+                </label>
+              </div>
+            </template>
+            <div v-else-if="selectedShapeEffect === 'hollow'" class="editor-v2__hollow-preview" aria-label="Hollow uses the stroke settings">
+              <span :style="{ borderColor: selectedLayer.stroke ?? '#111827', borderWidth: `${Math.max(2, selectedLayer.strokeWidth ?? 0)}px` }" />
+              <strong>Stroke only</strong>
+            </div>
           </section>
 
           <section class="editor-v2__inspector-section">
@@ -1554,7 +2663,7 @@ onMounted(() => {
             </div>
             <div class="editor-v2__swatches" aria-label="Page color palette">
               <button
-                v-for="color in palettes"
+                v-for="color in availablePalettes"
                 :key="color"
                 type="button"
                 :style="{ background: color }"
@@ -1601,6 +2710,7 @@ onMounted(() => {
   --sidebar-text: #f2f2f5;
   --sidebar-muted: #999aa5;
   width: 100%;
+  min-height: 100svh;
   min-height: 100dvh;
   overflow: hidden;
   background: var(--editor-workspace);
@@ -1625,6 +2735,7 @@ a {
   position: relative;
   z-index: 12;
   height: 54px;
+  min-height: 54px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1806,6 +2917,7 @@ a {
 }
 
 .editor-v2__layout {
+  height: calc(100svh - 54px);
   height: calc(100dvh - 54px);
   display: grid;
   grid-template-columns: 68px 288px minmax(0, 1fr) 330px;
@@ -1986,6 +3098,11 @@ a {
   color: #f36db4;
 }
 
+.editor-v2__secondary-panel-action:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .editor-v2__primary-panel-action {
   border-color: var(--editor-accent);
   background: var(--editor-accent);
@@ -2037,6 +3154,45 @@ a {
   gap: 4px;
 }
 
+.editor-v2__font-search {
+  height: 36px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  padding: 0 9px;
+  border: 1px solid #30323a;
+  border-radius: 5px;
+  background: #17181e;
+  color: var(--sidebar-muted);
+}
+
+.editor-v2__font-search:focus-within {
+  border-color: #b4367d;
+  color: #f36db4;
+}
+
+.editor-v2__font-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--sidebar-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.editor-v2__font-search input::placeholder {
+  color: #777984;
+}
+
+.editor-v2__font-search > span {
+  color: #777984;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
 .editor-v2__font-list button {
   min-height: 42px;
   display: flex;
@@ -2054,6 +3210,20 @@ a {
 .editor-v2__font-list button:hover {
   border-color: #75405f;
   color: #f36db4;
+}
+
+.editor-v2__font-list button.active {
+  border-color: #d44792;
+  background: #351424;
+  color: #ff8fc7;
+}
+
+.editor-v2__font-list button.editor-v2__font-more {
+  justify-content: center;
+  min-height: 34px;
+  font-family: Aptos, "Segoe UI", sans-serif;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .editor-v2__font-list small {
@@ -2128,6 +3298,141 @@ a {
   color: var(--sidebar-muted);
   font-size: 10px;
   text-align: center;
+}
+
+.editor-v2__icons8-search {
+  display: grid;
+  gap: 8px;
+}
+
+.editor-v2__icons8-search input,
+.editor-v2__icons8-search select,
+.editor-v2__icons8-search button {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 5px;
+  background: #15161b;
+  color: var(--sidebar-text);
+  font-size: 11px;
+}
+
+.editor-v2__icons8-search input,
+.editor-v2__icons8-search select {
+  padding: 0 9px;
+}
+
+.editor-v2__icons8-search button,
+.editor-v2__icons8-add {
+  background: #351424;
+  color: #ff8fc7;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.editor-v2__icons8-search button:hover:not(:disabled),
+.editor-v2__icons8-add:hover {
+  border-color: #f36db4;
+  background: #4a1b38;
+}
+
+.editor-v2__icons8-search button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.editor-v2__icons8-credit {
+  display: inline-block;
+  margin-top: 9px;
+  color: #f36db4;
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.editor-v2__icons8-credit:hover {
+  text-decoration: underline;
+}
+
+.editor-v2__icons8-status {
+  display: block;
+  margin-top: 8px;
+  color: var(--sidebar-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.editor-v2__icons8-status--error {
+  color: #ff9aa9;
+}
+
+.editor-v2__icons8-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-v2__icons8-card {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 6px;
+  background: #15161b;
+  padding: 7px;
+}
+
+.editor-v2__icons8-preview {
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.editor-v2__icons8-preview:hover {
+  outline: 2px solid #f36db4;
+  outline-offset: -2px;
+}
+
+.editor-v2__icons8-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.editor-v2__icons8-meta {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.editor-v2__icons8-meta strong,
+.editor-v2__icons8-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-v2__icons8-meta strong {
+  color: var(--sidebar-text);
+  font-size: 10px;
+}
+
+.editor-v2__icons8-meta span {
+  color: var(--sidebar-muted);
+  font-size: 9px;
+}
+
+.editor-v2__icons8-add {
+  min-height: 28px;
+  border: 1px solid #673252;
+  border-radius: 4px;
+  font-size: 10px;
 }
 
 .editor-v2__brand-swatches {
@@ -2444,6 +3749,7 @@ a {
   background: #ffffff;
   box-shadow: 0 7px 18px rgba(39, 40, 48, 0.13);
   padding: 3px;
+  isolation: isolate;
 }
 
 .editor-v2__zoom button {
@@ -2458,9 +3764,56 @@ a {
 }
 
 .editor-v2__zoom-value {
-  width: 48px !important;
+  width: 62px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   font-size: 10px;
   font-weight: 700;
+}
+
+.editor-v2__zoom-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: 176px;
+  display: grid;
+  gap: 1px;
+  border: 1px solid #343640;
+  border-radius: 7px;
+  background: #1b1c22;
+  box-shadow: 0 14px 36px rgba(16, 17, 22, 0.28);
+  padding: 6px;
+}
+
+.editor-v2__zoom-menu button {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border-radius: 4px;
+  color: #d8d9df;
+  font-size: 11px;
+  padding: 0 9px;
+}
+
+.editor-v2__zoom-menu button:hover,
+.editor-v2__zoom-menu button.active {
+  background: #30313a;
+  color: #ffffff;
+}
+
+.editor-v2__zoom-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.editor-v2__zoom-menu-divider {
+  height: 1px;
+  background: #343640;
+  margin: 4px 3px;
 }
 
 .editor-v2__pages-dock {
@@ -2784,6 +4137,248 @@ a {
   margin: 0;
 }
 
+.editor-v2__shape-swap {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 9px;
+}
+
+.editor-v2__shape-swap button {
+  min-width: 0;
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 5px;
+  background: var(--sidebar-raised);
+  color: var(--sidebar-muted);
+  cursor: pointer;
+}
+
+.editor-v2__shape-swap button:hover,
+.editor-v2__shape-swap button.active {
+  border-color: #c54b8c;
+  background: #351829;
+  color: #f36db4;
+}
+
+.editor-v2__rounded-shape-icon {
+  border-radius: 4px;
+}
+
+.editor-v2__fill-mode,
+.editor-v2__gradient-kind {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 9px;
+}
+
+.editor-v2__fill-mode button,
+.editor-v2__gradient-kind button {
+  min-width: 0;
+  min-height: 31px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.editor-v2__fill-mode button:hover,
+.editor-v2__fill-mode button.active,
+.editor-v2__gradient-kind button:hover,
+.editor-v2__gradient-kind button.active {
+  border-color: #c54b8c;
+  background: #351829;
+  color: #f36db4;
+}
+
+.editor-v2__gradient-preview {
+  height: 36px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 5px;
+  margin-bottom: 8px;
+}
+
+.editor-v2__gradient-geometry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.editor-v2__gradient-geometry label,
+.editor-v2__gradient-stop label {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  color: var(--sidebar-muted);
+  font-size: 8px;
+}
+
+.editor-v2__gradient-geometry input,
+.editor-v2__gradient-stop input[type="number"] {
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  box-sizing: border-box;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  color: var(--sidebar-text);
+  font-size: 10px;
+  padding: 0 6px;
+}
+
+.editor-v2__gradient-stops {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.editor-v2__gradient-stop {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr) 30px;
+  align-items: end;
+  gap: 5px;
+}
+
+.editor-v2__gradient-stop > input[type="color"] {
+  width: 34px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  cursor: pointer;
+  padding: 3px;
+}
+
+.editor-v2__gradient-stop > button,
+.editor-v2__gradient-add {
+  min-width: 0;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  color: var(--sidebar-muted);
+  cursor: pointer;
+}
+
+.editor-v2__gradient-stop > button:hover:not(:disabled),
+.editor-v2__gradient-add:hover:not(:disabled) {
+  border-color: #c54b8c;
+  color: #f36db4;
+}
+
+.editor-v2__gradient-stop > button:disabled,
+.editor-v2__gradient-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.editor-v2__gradient-add {
+  width: 100%;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 9px;
+}
+
+.editor-v2__effect-modes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.editor-v2__effect-modes button {
+  min-width: 0;
+  min-height: 31px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.editor-v2__effect-modes button:hover,
+.editor-v2__effect-modes button.active {
+  border-color: #c54b8c;
+  background: #351829;
+  color: #f36db4;
+}
+
+.editor-v2__effect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.editor-v2__effect-grid--glow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.editor-v2__effect-grid label {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  color: var(--sidebar-muted);
+  font-size: 8px;
+}
+
+.editor-v2__effect-grid input[type="number"] {
+  min-width: 0;
+  width: 100%;
+  height: 31px;
+  box-sizing: border-box;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  color: var(--sidebar-text);
+  font-size: 10px;
+  padding: 0 7px;
+}
+
+.editor-v2__effect-color input[type="color"] {
+  width: 100%;
+  height: 31px;
+  box-sizing: border-box;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  cursor: pointer;
+  padding: 3px;
+}
+
+.editor-v2__hollow-preview {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: var(--sidebar-raised);
+  color: var(--sidebar-muted);
+  font-size: 9px;
+  padding: 0 9px;
+}
+
+.editor-v2__hollow-preview span {
+  width: 22px;
+  height: 16px;
+  box-sizing: border-box;
+  border-style: solid;
+  border-radius: 3px;
+}
+
 .editor-v2__select,
 .editor-v2__control-row input,
 .editor-v2__geometry-grid input,
@@ -2987,6 +4582,29 @@ a {
   margin-bottom: 9px;
 }
 
+.editor-v2__image-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 9px 0 11px;
+}
+
+.editor-v2__image-palette span {
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border: 2px solid #3a3b44;
+  border-radius: 5px;
+}
+
+.editor-v2__image-error {
+  display: block;
+  margin: 7px 0;
+  color: #ff8a8a;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .editor-v2__arrange-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -3123,6 +4741,25 @@ select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid #e05a9f;
   outline-offset: 2px;
+}
+
+@media (max-height: 720px) and (min-width: 961px) {
+  .editor-v2__stage {
+    padding-top: 42px;
+    padding-bottom: 104px;
+  }
+
+  .editor-v2__zoom {
+    bottom: 92px;
+  }
+
+  .editor-v2__pages-dock {
+    height: 76px;
+  }
+
+  .editor-v2__ruler--left {
+    bottom: 76px;
+  }
 }
 
 @media (max-width: 1280px) {

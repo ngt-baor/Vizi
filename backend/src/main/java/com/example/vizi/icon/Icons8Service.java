@@ -55,6 +55,10 @@ class Icons8Service {
         var cleanPlatform = normalizeSimpleToken(platform, "");
         var cleanAmount = Math.max(1, Math.min(amount, 48));
 
+        if (apiKey.isBlank()) {
+            return Icons8SearchResponse.disabled("Icons8 search is not configured. Set ICONS8_API_KEY on the backend.");
+        }
+
         try {
             var request = HttpRequest.newBuilder(endpoint(cleanTerm, cleanLanguage, cleanPlatform, cleanAmount))
                     .timeout(Duration.ofSeconds(12))
@@ -102,13 +106,14 @@ class Icons8Service {
             }
             var commonName = stringValue(icon, "commonName");
             var platform = stringValue(icon, "platform");
+            var upstreamPreviewUrl = stringValue(icon, "previewUrl");
             result.add(new Icons8Icon(
                     id,
                     name,
                     stringValue(icon, "category"),
                     stringValue(icon, "subcategory"),
                     platform,
-                    previewUrl(id),
+                    trustedPreviewUrl(upstreamPreviewUrl) ? upstreamPreviewUrl : previewUrl(id),
                     sourceUrl(id, commonName.isBlank() ? name : commonName),
                     true,
                     booleanValue(icon, "isColor"),
@@ -146,6 +151,18 @@ class Icons8Service {
 
     private static String previewUrl(String id) {
         return "https://img.icons8.com/?size=96&id=" + encode(id) + "&format=png&color=000000";
+    }
+
+    private static boolean trustedPreviewUrl(String value) {
+        try {
+            var uri = URI.create(value);
+            var host = uri.getHost();
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && host != null
+                    && ("icons8.com".equalsIgnoreCase(host) || host.toLowerCase().endsWith(".icons8.com"));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     private static String sourceUrl(String id, String name) {
