@@ -3,14 +3,14 @@ import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { getDesign, getDesigns, updateDesign, type DesignDetail } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
-
-type CanvasLayer = Record<string, unknown> & {
-  type?: string;
-  page?: string;
-};
+import {
+  readEditorPreviewPages,
+  type EditorPreviewLayer,
+} from "../editor-v2/preview";
 
 type DraftCard = DesignDetail & {
-  frontLayers: CanvasLayer[];
+  frontBackground: string;
+  frontLayers: EditorPreviewLayer[];
 };
 
 const designs = ref<DraftCard[]>([]);
@@ -29,29 +29,12 @@ function formatUpdatedAt(value: string): string {
   return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 }
 
-function parseFrontLayers(canvasJson: string): CanvasLayer[] {
-  try {
-    const canvas = JSON.parse(canvasJson) as { layers?: unknown };
-    if (!Array.isArray(canvas.layers)) {
-      return [];
-    }
-    // Same rule as editor Front page: missing page => front.
-    return canvas.layers.filter((layer): layer is CanvasLayer => {
-      if (typeof layer !== "object" || layer === null) {
-        return false;
-      }
-      const page = (layer as CanvasLayer).page;
-      return page !== "back";
-    });
-  } catch {
-    return [];
-  }
-}
-
 function toDraftCard(design: DesignDetail): DraftCard {
+  const front = readEditorPreviewPages(design.canvasJson).front;
   return {
     ...design,
-    frontLayers: parseFrontLayers(design.canvasJson),
+    frontBackground: front.background,
+    frontLayers: front.layers,
   };
 }
 
@@ -143,6 +126,7 @@ async function renameDraft(design: DraftCard, event: Event): Promise<void> {
                 :layers="design.frontLayers"
                 :width-mm="design.widthMm"
                 :height-mm="design.heightMm"
+                :background="design.frontBackground"
                 :label="`${design.name} preview`"
                 empty-label="Empty"
               />

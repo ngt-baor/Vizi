@@ -1991,15 +1991,31 @@ h2 {
 
 .detail-preview {
   display: grid;
-  place-items: center;
+  grid-template-rows: auto 1fr;
+  align-items: center;
+  justify-items: center;
+  gap: 18px;
   min-height: 340px;
   border-radius: 16px;
-  background:
-    linear-gradient(135deg, rgba(248, 244, 235, 0.98), rgba(218, 231, 217, 0.58));
+  background: #f2f1eb;
+  padding: 22px;
   color: #745f39;
   font-size: 14px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.detail-preview__toolbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-preview__toolbar > strong {
+  color: #2f281c;
+  font-size: 13px;
 }
 
 .canvas-guides {

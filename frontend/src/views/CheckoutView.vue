@@ -9,26 +9,17 @@ import {
   type PreflightReport,
 } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
+import { type EditorSide } from "../editor-v2/document";
 import {
-  readEditorDocumentV2,
-  type EditorLayerV2,
-  type EditorSide,
-} from "../editor-v2/document";
-
-type CanvasLayer = Record<string, unknown> & {
-  type?: string;
-};
-
-type CheckoutPage = {
-  background: string;
-  layers: CanvasLayer[];
-};
+  readEditorPreviewPages,
+  type EditorPreviewPage,
+} from "../editor-v2/preview";
 
 const route = useRoute();
 const router = useRouter();
 const design = ref<DesignDetail | null>(null);
 const activeSide = ref<EditorSide>("front");
-const checkoutPages = ref<Record<EditorSide, CheckoutPage>>({
+const checkoutPages = ref<Record<EditorSide, EditorPreviewPage>>({
   front: { background: "#fffdf8", layers: [] },
   back: { background: "#fffdf8", layers: [] },
 });
@@ -68,57 +59,12 @@ const roundedCornerPrice = computed(() => roundedCorners.value ? Math.ceil(quant
 const subtotal = computed(() => Math.ceil(quantity.value / 100) * selectedPaper.value.pricePer100);
 const estimatedTotal = computed(() => subtotal.value + roundedCornerPrice.value);
 
-function adaptEditorLayers(layers: EditorLayerV2[]): CanvasLayer[] {
-  return layers.map((layer) => ({
-    ...layer,
-    text: layer.content,
-    radius: layer.cornerRadius,
-  }));
-}
-
-function parseCanvasPages(canvasJson: string): Record<EditorSide, CheckoutPage> {
-  const v2Document = readEditorDocumentV2(canvasJson);
-  if (v2Document) {
-    return {
-      front: {
-        background: v2Document.pages.front.background,
-        layers: adaptEditorLayers(v2Document.pages.front.layers),
-      },
-      back: {
-        background: v2Document.pages.back.background,
-        layers: adaptEditorLayers(v2Document.pages.back.layers),
-      },
-    };
-  }
-  try {
-    const canvas = JSON.parse(canvasJson) as { layers?: unknown };
-    const legacyLayers = Array.isArray(canvas.layers)
-      ? canvas.layers.filter((layer): layer is CanvasLayer => typeof layer === "object" && layer !== null)
-      : [];
-    return {
-      front: {
-        background: "#fffdf8",
-        layers: legacyLayers.filter((layer) => layer.page !== "back"),
-      },
-      back: {
-        background: "#fffdf8",
-        layers: legacyLayers.filter((layer) => layer.page === "back"),
-      },
-    };
-  } catch {
-    return {
-      front: { background: "#fffdf8", layers: [] },
-      back: { background: "#fffdf8", layers: [] },
-    };
-  }
-}
-
 onMounted(async () => {
   const rawId = route.params.designId;
   const designId = Number(Array.isArray(rawId) ? rawId[0] : rawId);
   try {
     design.value = await getDesign(designId);
-    checkoutPages.value = parseCanvasPages(design.value.canvasJson);
+    checkoutPages.value = readEditorPreviewPages(design.value.canvasJson);
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot load checkout";
   } finally {
