@@ -64,6 +64,11 @@ import {
   type EditorLayerType,
   type EditorSide,
 } from "../editor-v2/document";
+import {
+  createPrintPdf,
+  downloadPrintPdf,
+  getPrintExportSpec,
+} from "../editor-v2/printExport";
 
 type EditorTool = "select" | "text" | "rect" | "ellipse" | "image";
 type EditorLayerAction = "duplicate" | "toggle-lock" | "bring-forward" | "send-backward" | "delete";
@@ -93,6 +98,8 @@ const showPrintGuides = ref(true);
 const preflightReport = ref<PreflightReport | null>(null);
 const preflightLoading = ref(false);
 const checkoutLoading = ref(false);
+const exportState = ref<"idle" | "exporting" | "downloaded" | "error">("idle");
+const exportError = ref("");
 const preflightError = ref("");
 const saveState = ref<"idle" | "saved" | "dirty" | "saving" | "loading" | "error">("idle");
 const saveError = ref("");
@@ -107,6 +114,9 @@ const backendDesignId = computed(() => {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 });
 const statusText = computed(() => {
+  if (exportState.value === "exporting") return "Preparing print PDF...";
+  if (exportState.value === "downloaded") return "Print PDF downloaded";
+  if (exportState.value === "error") return exportError.value || "Print export failed";
   if (saveState.value === "loading") return "Loading draft...";
   if (saveState.value === "saving") return "Saving draft...";
   if (saveState.value === "error") return saveError.value || "Draft sync failed";
@@ -114,6 +124,7 @@ const statusText = computed(() => {
   if (saveState.value === "dirty") return "Unsaved changes";
   return backendDesignId.value ? "Draft loaded" : "All changes saved";
 });
+const printExportSpec = computed(() => getPrintExportSpec(document.value));
 const preflightErrorCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "ERROR").length ?? 0);
 const preflightWarningCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "WARNING").length ?? 0);
 
@@ -182,6 +193,8 @@ function markDirty(): void {
   saveState.value = "dirty";
   preflightReport.value = null;
   preflightError.value = "";
+  exportState.value = "idle";
+  exportError.value = "";
 }
 
 function backendAssetUrl(url: string): string {
@@ -698,6 +711,44 @@ async function runPreflightCheck(): Promise<void> {
   }
 }
 
+async function exportPrintPdf(): Promise<void> {
+  const designId = backendDesignId.value;
+  if (!designId) {
+    exportError.value = "Save this draft before exporting a print PDF.";
+    exportState.value = "error";
+    return;
+  }
+  if (exportState.value === "exporting" || preflightLoading.value || saveState.value === "saving" || saveState.value === "loading") return;
+
+  exportState.value = "exporting";
+  exportError.value = "";
+  preflightLoading.value = true;
+  preflightReport.value = null;
+  preflightError.value = "";
+  try {
+    await saveDraft();
+    if (saveState.value === "error") {
+      throw new Error(saveError.value || "Cannot save draft before print export");
+    }
+    const report = await preflightDesign(designId);
+    preflightReport.value = report;
+    if (report.issues.some((issue) => issue.level === "ERROR")) {
+      throw new Error("Print export is blocked until all preflight errors are fixed.");
+    }
+    const result = await createPrintPdf(document.value);
+    downloadPrintPdf(result);
+    exportState.value = "downloaded";
+    window.setTimeout(() => {
+      if (exportState.value === "downloaded") exportState.value = "idle";
+    }, 3000);
+  } catch (unknownError) {
+    exportError.value = unknownError instanceof Error ? unknownError.message : "Cannot export print PDF";
+    exportState.value = "error";
+  } finally {
+    preflightLoading.value = false;
+  }
+}
+
 function focusPreflightIssue(issue: PreflightIssue): void {
   if ((issue.side !== "front" && issue.side !== "back") || issue.layerIndex == null) return;
   const layer = document.value.pages[issue.side].layers[issue.layerIndex];
@@ -804,7 +855,14 @@ onMounted(() => {
         <button class="editor-v2__header-icon" type="button" aria-label="More actions" title="More actions">
           <Menu :size="17" :stroke-width="1.8" aria-hidden="true" />
         </button>
-        <button class="editor-v2__header-icon" type="button" aria-label="Download" title="Download">
+        <button
+          class="editor-v2__header-icon editor-v2__export-icon"
+          type="button"
+          aria-label="Export print PDF"
+          title="Export Front and Back print PDF"
+          :disabled="exportState === 'exporting' || preflightLoading || saveState === 'saving' || saveState === 'loading'"
+          @click="exportPrintPdf"
+        >
           <Download :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <button
@@ -1166,12 +1224,12 @@ onMounted(() => {
         </div>
 
         <section
-          v-if="preflightError || preflightReport"
+          v-if="preflightError || preflightReport || exportError"
           class="editor-v2__preflight-report"
           :class="{ passed: preflightReport?.valid }"
           aria-live="polite"
         >
-          <p v-if="preflightError" class="editor-v2__preflight-error" role="alert">{{ preflightError }}</p>
+          <p v-if="preflightError || exportError" class="editor-v2__preflight-error" role="alert">{{ preflightError || exportError }}</p>
           <template v-else-if="preflightReport">
             <div class="editor-v2__preflight-summary">
               <CircleCheck v-if="preflightReport.valid" :size="19" :stroke-width="1.8" aria-hidden="true" />
@@ -1456,6 +1514,27 @@ onMounted(() => {
                 {{ side === "front" ? "Front" : "Back" }}
               </button>
             </div>
+          </section>
+
+          <section class="editor-v2__inspector-section">
+            <div class="editor-v2__inspector-section-title">
+              <strong>Print export</strong>
+              <span>{{ printExportSpec.dpi }} DPI</span>
+            </div>
+            <div class="editor-v2__print-export-summary">
+              <span>PDF / Front + Back</span>
+              <strong>{{ printExportSpec.pageWidthMm }} x {{ printExportSpec.pageHeightMm }} mm</strong>
+              <small>{{ printExportSpec.bleedMm }} mm bleed on every edge</small>
+            </div>
+            <button
+              class="editor-v2__print-export-button"
+              type="button"
+              :disabled="exportState === 'exporting' || preflightLoading || saveState === 'saving' || saveState === 'loading'"
+              @click="exportPrintPdf"
+            >
+              <Download :size="15" :stroke-width="1.8" aria-hidden="true" />
+              <span>{{ exportState === "exporting" ? "Preparing PDF" : "Export print PDF" }}</span>
+            </button>
           </section>
 
           <section class="editor-v2__inspector-section">
@@ -2943,6 +3022,51 @@ a {
   accent-color: var(--editor-accent);
 }
 
+.editor-v2__print-export-summary {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+  color: var(--sidebar-text);
+}
+
+.editor-v2__print-export-summary span,
+.editor-v2__print-export-summary small {
+  color: var(--sidebar-muted);
+  font-size: 10px;
+}
+
+.editor-v2__print-export-summary strong {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.editor-v2__print-export-button {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #75405f;
+  border-radius: 4px;
+  background: #351829;
+  color: #f36db4;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.editor-v2__print-export-button:hover:not(:disabled) {
+  border-color: #9d4d7b;
+  background: #482039;
+  color: #ffffff;
+}
+
+.editor-v2__print-export-button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .editor-v2__page-size {
   display: flex;
   align-items: center;
@@ -3111,6 +3235,10 @@ textarea:focus-visible {
   .editor-v2__document-name span,
   .editor-v2__header-icon {
     display: none;
+  }
+
+  .editor-v2__header-icon.editor-v2__export-icon {
+    display: grid;
   }
 
   .editor-v2__document-name strong {
