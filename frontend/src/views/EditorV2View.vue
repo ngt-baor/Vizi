@@ -95,11 +95,14 @@ import {
 } from "../editor-v2/printExport";
 import { extractImagePalette } from "../editor-v2/imagePalette";
 import { localFonts } from "../generated/localFonts";
+import { stockAssets, type StockAsset, type StockKind } from "../editor-v2/stockAssets";
 
 type EditorTool = "select" | "text" | "rect" | "ellipse" | "image";
 type EditorLayerAction = "duplicate" | "toggle-lock" | "bring-forward" | "send-backward" | "delete";
-type SidebarPanel = "elements" | "text" | "uploads" | "icons8" | "layers";
+type SidebarPanel = "elements" | "text" | "uploads" | "stock" | "icons8" | "layers";
 type Icons8Platform = "" | "material" | "fluency" | "color" | "ios7" | "windows";
+type StockView = "browse" | "favorites" | "recent";
+type StockKindFilter = "all" | StockKind;
 type TextPreset = "title" | "subtitle" | "body";
 type ShapePreset = EditorShapeKind;
 type FramePreset = "frame" | "circle-frame" | "rounded-frame" | "2-photos" | "3-photos" | "4-photos" | "6-photos" | "9-photos" | "feature-left" | "feature-right" | "feature-top" | "hero-mosaic";
@@ -167,6 +170,12 @@ const icons8Loading = ref(false);
 const icons8Error = ref("");
 const icons8Message = ref("");
 let icons8RequestId = 0;
+const stockQuery = ref("");
+const stockView = ref<StockView>("browse");
+const stockKindFilter = ref<StockKindFilter>("all");
+const stockCollectionFilter = ref("All");
+const stockFavorites = ref<string[]>(readStoredStockIds("vizi.editor.stock.favorites"));
+const stockRecent = ref<string[]>(readStoredStockIds("vizi.editor.stock.recent"));
 const fontSearch = ref("");
 const fontResultLimit = ref(40);
 const backendDesignId = computed(() => {
@@ -244,6 +253,29 @@ const filteredFontOptions = computed(() => {
 });
 const visibleFontOptions = computed(() => filteredFontOptions.value.slice(0, fontResultLimit.value));
 const hiddenFontCount = computed(() => Math.max(0, filteredFontOptions.value.length - visibleFontOptions.value.length));
+const stockCollections = computed(() => [
+  "All",
+  ...new Set(stockAssets.map((asset) => asset.collection)),
+]);
+
+const stockResults = computed<StockAsset[]>(() => {
+  const query = normalizeFontSearch(stockQuery.value);
+  const ids = stockView.value === "favorites"
+    ? stockFavorites.value
+    : stockView.value === "recent"
+      ? stockRecent.value
+      : null;
+  const source = ids
+    ? ids.map((id) => stockAssets.find((asset) => asset.id === id)).filter((asset): asset is StockAsset => Boolean(asset))
+    : stockAssets;
+
+  return source.filter((asset) => {
+    const matchesKind = stockKindFilter.value === "all" || asset.kind === stockKindFilter.value;
+    const matchesCollection = stockCollectionFilter.value === "All" || asset.collection === stockCollectionFilter.value;
+    const haystack = normalizeFontSearch([asset.title, asset.collection, ...asset.tags].join(" "));
+    return matchesKind && matchesCollection && (!query || haystack.includes(query));
+  });
+});
 const canUndo = computed(() => historyPast.value.length > 0);
 const canRedo = computed(() => historyFuture.value.length > 0);
 const selectedShapePreset = computed<ShapePreset | null>(() => {
@@ -284,6 +316,7 @@ const panelTitle = computed(() => ({
   elements: "Elements",
   text: "Text",
   uploads: "Uploads",
+  stock: "Stock",
   icons8: "Icons8",
   layers: "Layers",
 }[activePanel.value]));
@@ -292,7 +325,8 @@ const sidebarItems: Array<{ id: SidebarPanel; label: string; icon: Component }> 
   { id: "elements", label: "Elements", icon: Shapes },
   { id: "text", label: "Text", icon: Type },
   { id: "uploads", label: "Uploads", icon: Upload },
-  { id: "icons8", label: "Icons8", icon: ImageIcon },
+  { id: "stock", label: "Stock", icon: ImageIcon },
+  { id: "icons8", label: "Icons8", icon: Grid2x2 },
   { id: "layers", label: "Layers", icon: Layers3 },
 ];
 
@@ -303,6 +337,13 @@ const icons8PlatformOptions: Array<{ value: Icons8Platform; label: string }> = [
   { value: "ios7", label: "iOS 7" },
   { value: "windows", label: "Windows" },
   { value: "", label: "All styles" },
+];
+
+const stockKindOptions: Array<{ value: StockKindFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "photo", label: "Photos" },
+  { value: "illustration", label: "Illustrations" },
+  { value: "background", label: "Backgrounds" },
 ];
 
 const shapeItems: Array<IconItem & { preset: ShapePreset }> = [
@@ -750,6 +791,49 @@ function handleImageFile(event: Event): void {
     }
   });
   reader.readAsDataURL(file);
+}
+
+function readStoredStockIds(key: string): string[] {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistStoredStockIds(key: string, ids: string[]): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(ids));
+  } catch {
+    // Local persistence is optional when browser storage is unavailable.
+  }
+}
+
+function toggleStockFavorite(asset: StockAsset): void {
+  stockFavorites.value = stockFavorites.value.includes(asset.id)
+    ? stockFavorites.value.filter((id) => id !== asset.id)
+    : [asset.id, ...stockFavorites.value];
+  persistStoredStockIds("vizi.editor.stock.favorites", stockFavorites.value);
+}
+
+function addStockRecent(id: string): void {
+  stockRecent.value = [id, ...stockRecent.value.filter((item) => item !== id)].slice(0, 30);
+  persistStoredStockIds("vizi.editor.stock.recent", stockRecent.value);
+}
+
+async function addStockAsset(asset: StockAsset): Promise<void> {
+  const source = safeImageSource(asset.previewUrl);
+  if (!source) return;
+  const pixelSize = await readImagePixelSize(source);
+  addLayer("image", source, {
+    name: "Stock - " + asset.title,
+    width: 52,
+    height: 36,
+    ...pixelSize,
+  });
+  addStockRecent(asset.id);
+  activePanel.value = "stock";
 }
 
 async function searchIcons8Assets(): Promise<void> {
@@ -1872,7 +1956,91 @@ onBeforeUnmount(() => {
           </section>
         </template>
 
-        <template v-else-if="activePanel === 'icons8'">
+        <template v-else-if="activePanel === 'stock'">
+  <section class="editor-v2__element-section editor-v2__stock-controls">
+    <div class="editor-v2__stock-tabs" role="tablist" aria-label="Stock views">
+      <button type="button" :class="{ active: stockView === 'browse' }" @click="stockView = 'browse'">
+        <ImageIcon :size="15" :stroke-width="1.7" aria-hidden="true" />
+        <span>Browse</span>
+      </button>
+      <button type="button" :class="{ active: stockView === 'favorites' }" @click="stockView = 'favorites'">
+        <Star :size="15" :stroke-width="1.7" aria-hidden="true" />
+        <span>Favorites</span>
+      </button>
+      <button type="button" :class="{ active: stockView === 'recent' }" @click="stockView = 'recent'">
+        <RotateCw :size="15" :stroke-width="1.7" aria-hidden="true" />
+        <span>Recent</span>
+      </button>
+    </div>
+    <label class="editor-v2__stock-search">
+      <Search :size="15" :stroke-width="1.7" aria-hidden="true" />
+      <input v-model="stockQuery" type="search" placeholder="Search photos & illustrations" aria-label="Search stock assets" maxlength="80">
+    </label>
+    <div class="editor-v2__stock-kinds" aria-label="Stock types">
+      <button
+        v-for="option in stockKindOptions"
+        :key="option.value"
+        type="button"
+        :class="{ active: stockKindFilter === option.value }"
+        @click="stockKindFilter = option.value"
+      >
+        {{ option.label }}
+      </button>
+    </div>
+    <div class="editor-v2__section-label editor-v2__section-label--subtle">
+      <span>Collections</span>
+      <span>{{ stockCollections.length - 1 }}</span>
+    </div>
+    <div class="editor-v2__stock-collections">
+      <button
+        v-for="collection in stockCollections"
+        :key="collection"
+        type="button"
+        :class="{ active: stockCollectionFilter === collection }"
+        @click="stockCollectionFilter = collection"
+      >
+        {{ collection }}
+      </button>
+    </div>
+  </section>
+
+  <section v-if="stockResults.length" class="editor-v2__element-section">
+    <div class="editor-v2__section-label">
+      <span>{{ stockView === 'favorites' ? 'Favorites' : stockView === 'recent' ? 'Recent' : 'Results' }}</span>
+      <span>{{ stockResults.length }}</span>
+    </div>
+    <div class="editor-v2__stock-grid">
+      <article v-for="asset in stockResults" :key="asset.id" class="editor-v2__stock-card">
+        <button
+          class="editor-v2__stock-preview"
+          type="button"
+          :aria-label="'Add ' + asset.title"
+          :title="'Add ' + asset.title"
+          @click="addStockAsset(asset)"
+        >
+          <img :src="asset.previewUrl" :alt="asset.title" loading="lazy">
+          <span
+            class="editor-v2__stock-favorite"
+            :class="{ active: stockFavorites.includes(asset.id) }"
+            role="button"
+            :aria-label="stockFavorites.includes(asset.id) ? 'Remove from favorites' : 'Add to favorites'"
+            @click.stop="toggleStockFavorite(asset)"
+          >
+            <Star :size="14" :stroke-width="1.8" aria-hidden="true" />
+          </span>
+        </button>
+        <div class="editor-v2__stock-meta">
+          <strong>{{ asset.title }}</strong>
+          <span>{{ asset.collection }}</span>
+        </div>
+      </article>
+    </div>
+  </section>
+  <div v-else class="editor-v2__panel-empty">
+    {{ stockView === 'favorites' ? 'No favorites yet.' : stockView === 'recent' ? 'No recent stock assets.' : 'No stock assets match these filters.' }}
+  </div>
+</template>
+<template v-else-if="activePanel === 'icons8'">
           <section class="editor-v2__element-section">
             <div class="editor-v2__section-label">
               <span>Icons8 library</span>
@@ -3298,6 +3466,175 @@ a {
   color: var(--sidebar-muted);
   font-size: 10px;
   text-align: center;
+}
+
+.editor-v2__stock-tabs,
+.editor-v2__stock-kinds,
+.editor-v2__stock-collections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.editor-v2__stock-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 9px;
+}
+
+.editor-v2__stock-tabs button,
+.editor-v2__stock-kinds button,
+.editor-v2__stock-collections button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #30323a;
+  border-radius: 999px;
+  background: #17181e;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.editor-v2__stock-tabs button:hover,
+.editor-v2__stock-tabs button.active,
+.editor-v2__stock-kinds button:hover,
+.editor-v2__stock-kinds button.active,
+.editor-v2__stock-collections button:hover,
+.editor-v2__stock-collections button.active {
+  border-color: #d44792;
+  background: #351424;
+  color: #ff8fc7;
+}
+
+.editor-v2__stock-search {
+  height: 36px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+  padding: 0 9px;
+  border: 1px solid #30323a;
+  border-radius: 5px;
+  background: #17181e;
+  color: var(--sidebar-muted);
+}
+
+.editor-v2__stock-search:focus-within {
+  border-color: #b4367d;
+  color: #f36db4;
+}
+
+.editor-v2__stock-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--sidebar-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.editor-v2__stock-search input::placeholder {
+  color: #777984;
+}
+
+.editor-v2__section-label--subtle {
+  margin-top: 12px;
+  color: #777984;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.editor-v2__stock-collections {
+  max-height: 76px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.editor-v2__stock-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-v2__stock-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #2c2e36;
+  border-radius: 6px;
+  background: #15161b;
+}
+
+.editor-v2__stock-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.18;
+  display: block;
+  overflow: hidden;
+  border: 0;
+  background: #22242c;
+  cursor: pointer;
+  padding: 0;
+}
+
+.editor-v2__stock-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transition: transform 160ms ease;
+}
+
+.editor-v2__stock-preview:hover img {
+  transform: scale(1.04);
+}
+
+.editor-v2__stock-favorite {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(21, 22, 27, 0.78);
+  color: #e1e3ea;
+}
+
+.editor-v2__stock-favorite.active {
+  background: #351424;
+  color: #ff8fc7;
+}
+
+.editor-v2__stock-meta {
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px 8px;
+}
+
+.editor-v2__stock-meta strong,
+.editor-v2__stock-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-v2__stock-meta strong {
+  color: var(--sidebar-text);
+  font-size: 10px;
+}
+
+.editor-v2__stock-meta span {
+  color: var(--sidebar-muted);
+  font-size: 9px;
 }
 
 .editor-v2__icons8-search {
