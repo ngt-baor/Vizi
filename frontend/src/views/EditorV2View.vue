@@ -36,6 +36,7 @@ import {
   Save,
   Shapes,
   Share2,
+  ShoppingCart,
   ShieldCheck,
   Square,
   Trash2,
@@ -45,7 +46,7 @@ import {
 } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
-import { RouterLink, useRoute } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
 import {
   apiBaseUrl,
@@ -79,6 +80,7 @@ type IconItem = {
 };
 
 const route = useRoute();
+const router = useRouter();
 const documentId = computed(() => String(route.params.designId ?? "new"));
 const storageKey = computed(() => "vizi.editor.v2." + documentId.value);
 const document = ref(createEditorDocumentV2(documentId.value));
@@ -90,6 +92,7 @@ const zoom = ref(100);
 const showPrintGuides = ref(true);
 const preflightReport = ref<PreflightReport | null>(null);
 const preflightLoading = ref(false);
+const checkoutLoading = ref(false);
 const preflightError = ref("");
 const saveState = ref<"idle" | "saved" | "dirty" | "saving" | "loading" | "error">("idle");
 const saveError = ref("");
@@ -650,6 +653,26 @@ async function saveDraft(): Promise<void> {
   }
 }
 
+async function openCheckout(): Promise<void> {
+  const designId = backendDesignId.value;
+  if (!designId) {
+    saveError.value = "Save this draft before checkout.";
+    saveState.value = "error";
+    return;
+  }
+  if (checkoutLoading.value || saveState.value === "saving" || saveState.value === "loading") return;
+
+  checkoutLoading.value = true;
+  try {
+    await saveDraft();
+    if (saveState.value !== "error") {
+      await router.push({ name: "checkout", params: { designId } });
+    }
+  } finally {
+    checkoutLoading.value = false;
+  }
+}
+
 async function runPreflightCheck(): Promise<void> {
   const designId = backendDesignId.value;
   if (!designId) {
@@ -792,6 +815,16 @@ onMounted(() => {
         >
           <ShieldCheck :size="15" :stroke-width="1.8" aria-hidden="true" />
           <span>{{ preflightLoading ? "Checking" : "Preflight" }}</span>
+        </button>
+        <button
+          class="editor-v2__checkout"
+          type="button"
+          aria-label="Checkout"
+          title="Checkout"
+          :disabled="checkoutLoading || saveState === 'saving' || saveState === 'loading'"
+          @click="openCheckout"
+        >
+          <ShoppingCart :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <button class="editor-v2__share" type="button">
           <Share2 :size="15" :stroke-width="1.8" aria-hidden="true" />
@@ -1647,6 +1680,7 @@ a {
 }
 
 .editor-v2__preflight,
+.editor-v2__checkout,
 .editor-v2__share,
 .editor-v2__save {
   height: 31px;
@@ -1663,6 +1697,12 @@ a {
   padding: 0 10px;
 }
 
+.editor-v2__checkout {
+  width: 31px;
+  justify-content: center;
+  padding: 0;
+}
+
 .editor-v2__save {
   border-color: var(--editor-accent);
   background: var(--editor-accent);
@@ -1670,6 +1710,7 @@ a {
 }
 
 .editor-v2__preflight:hover,
+.editor-v2__checkout:hover,
 .editor-v2__share:hover {
   background: var(--editor-soft);
 }
@@ -1679,6 +1720,7 @@ a {
 }
 
 .editor-v2__preflight:disabled,
+.editor-v2__checkout:disabled,
 .editor-v2__save:disabled {
   cursor: wait;
   opacity: 0.65;
@@ -3080,6 +3122,7 @@ textarea:focus-visible {
   }
 
   .editor-v2__preflight,
+  .editor-v2__checkout,
   .editor-v2__share,
   .editor-v2__save {
     width: 32px;

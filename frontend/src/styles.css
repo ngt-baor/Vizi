@@ -2256,9 +2256,55 @@ h2 {
 
 .checkout-preview {
   display: grid;
-  place-items: center;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
   min-height: 420px;
   padding: 24px;
+}
+
+.checkout-preview__toolbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.checkout-preview__toolbar > strong {
+  color: #2f281c;
+  font-size: 13px;
+}
+
+.checkout-side-switch {
+  display: inline-flex;
+  gap: 3px;
+  border: 1px solid rgba(122, 93, 46, 0.18);
+  border-radius: 7px;
+  background: rgba(122, 93, 46, 0.07);
+  padding: 3px;
+}
+
+.checkout-side-switch button {
+  min-width: 68px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #655a4b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.checkout-side-switch button.active {
+  background: #2f281c;
+  color: #fffdf8;
+}
+
+.checkout-preview > .canvas-frame {
+  align-self: center;
+  justify-self: center;
 }
 
 .checkout-panel {

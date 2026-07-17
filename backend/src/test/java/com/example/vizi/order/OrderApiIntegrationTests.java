@@ -310,6 +310,49 @@ class OrderApiIntegrationTests {
     }
 
     @Test
+    void preflightErrorsBlockOrderCreation() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        var template = templateRepository.save(new Template(
+                "Unsafe Order Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                """
+                        {
+                          "schemaVersion": 2,
+                          "pages": {
+                            "front": {"layers":[{"type":"text","x":0,"y":0,"width":20,"height":10}]},
+                            "back": {"layers":[]}
+                          }
+                        }
+                        """,
+                true
+        ));
+        var createDesignResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createDesignResponse.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(post("/api/orders")
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "matte-350",
+                                  "quantity": 100,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(designId.longValue())))
+                .andExpect(status().isBadRequest());
+        assertThat(orderRepository.count()).isZero();
+    }
+
+    @Test
     void unsupportedPaperIsRejected() throws Exception {
         userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
         var template = templateRepository.save(new Template(

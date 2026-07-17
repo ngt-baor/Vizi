@@ -9,15 +9,31 @@ import {
   type PreflightReport,
 } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
+import {
+  readEditorDocumentV2,
+  type EditorLayerV2,
+  type EditorSide,
+} from "../editor-v2/document";
 
 type CanvasLayer = Record<string, unknown> & {
   type?: string;
 };
 
+type CheckoutPage = {
+  background: string;
+  layers: CanvasLayer[];
+};
+
 const route = useRoute();
 const router = useRouter();
 const design = ref<DesignDetail | null>(null);
-const layers = ref<CanvasLayer[]>([]);
+const activeSide = ref<EditorSide>("front");
+const checkoutPages = ref<Record<EditorSide, CheckoutPage>>({
+  front: { background: "#fffdf8", layers: [] },
+  back: { background: "#fffdf8", layers: [] },
+});
+const layers = computed(() => checkoutPages.value[activeSide.value].layers);
+const previewBackground = computed(() => checkoutPages.value[activeSide.value].background);
 const loading = ref(true);
 const error = ref("");
 const orderError = ref("");
@@ -28,13 +44,16 @@ const roundedCorners = ref(false);
 const preflightReport = ref<PreflightReport | null>(null);
 const preflightLoading = ref(false);
 const preflightError = ref("");
-const forceOrderDespitePreflight = ref(false);
+const preflightBlocksOrder = computed(() =>
+  preflightReport.value?.issues.some((issue) => issue.level === "ERROR") ?? false,
+);
 
 const paperOptions = [
   { id: "matte-350", label: "Matte 350gsm", pricePer100: 180000 },
   { id: "silk-400", label: "Silk 400gsm", pricePer100: 240000 },
   { id: "linen-300", label: "Linen 300gsm", pricePer100: 280000 },
 ];
+const checkoutSides: EditorSide[] = ["front", "back"];
 const quantityOptions = [100, 200, 500, 1000];
 const currency = new Intl.NumberFormat("vi-VN", {
   style: "currency",
@@ -49,21 +68,48 @@ const roundedCornerPrice = computed(() => roundedCorners.value ? Math.ceil(quant
 const subtotal = computed(() => Math.ceil(quantity.value / 100) * selectedPaper.value.pricePer100);
 const estimatedTotal = computed(() => subtotal.value + roundedCornerPrice.value);
 
-function parseCanvasLayers(canvasJson: string): CanvasLayer[] {
+function adaptEditorLayers(layers: EditorLayerV2[]): CanvasLayer[] {
+  return layers.map((layer) => ({
+    ...layer,
+    text: layer.content,
+    radius: layer.cornerRadius,
+  }));
+}
+
+function parseCanvasPages(canvasJson: string): Record<EditorSide, CheckoutPage> {
+  const v2Document = readEditorDocumentV2(canvasJson);
+  if (v2Document) {
+    return {
+      front: {
+        background: v2Document.pages.front.background,
+        layers: adaptEditorLayers(v2Document.pages.front.layers),
+      },
+      back: {
+        background: v2Document.pages.back.background,
+        layers: adaptEditorLayers(v2Document.pages.back.layers),
+      },
+    };
+  }
   try {
     const canvas = JSON.parse(canvasJson) as { layers?: unknown };
-    return Array.isArray(canvas.layers)
-      ? canvas.layers.filter((layer): layer is CanvasLayer => {
-        if (typeof layer !== "object" || layer === null) {
-          return false;
-        }
-        // Checkout preview shows front side; missing page defaults to front.
-        const page = (layer as CanvasLayer).page;
-        return page !== "back";
-      })
+    const legacyLayers = Array.isArray(canvas.layers)
+      ? canvas.layers.filter((layer): layer is CanvasLayer => typeof layer === "object" && layer !== null)
       : [];
+    return {
+      front: {
+        background: "#fffdf8",
+        layers: legacyLayers.filter((layer) => layer.page !== "back"),
+      },
+      back: {
+        background: "#fffdf8",
+        layers: legacyLayers.filter((layer) => layer.page === "back"),
+      },
+    };
   } catch {
-    return [];
+    return {
+      front: { background: "#fffdf8", layers: [] },
+      back: { background: "#fffdf8", layers: [] },
+    };
   }
 }
 
@@ -72,7 +118,7 @@ onMounted(async () => {
   const designId = Number(Array.isArray(rawId) ? rawId[0] : rawId);
   try {
     design.value = await getDesign(designId);
-    layers.value = parseCanvasLayers(design.value.canvasJson);
+    checkoutPages.value = parseCanvasPages(design.value.canvasJson);
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot load checkout";
   } finally {
@@ -108,8 +154,12 @@ async function submitOrder() {
   orderError.value = "";
   try {
     const report = preflightReport.value ?? await runPreflight();
-    if (report && !report.valid && !forceOrderDespitePreflight.value) {
-      orderError.value = "Preflight found blocking issues. Fix the design or confirm override.";
+    if (!report) {
+      orderError.value = preflightError.value || "Preflight must complete before creating an order.";
+      return;
+    }
+    if (!report.valid) {
+      orderError.value = "Preflight found errors. Fix the design before creating an order.";
       return;
     }
     const order = await createOrder(design.value.id, paper.value, quantity.value, roundedCorners.value);
@@ -146,12 +196,28 @@ async function submitOrder() {
 
       <div class="checkout-shell">
         <section class="checkout-preview" aria-label="Checkout design preview">
+          <div class="checkout-preview__toolbar">
+            <strong>{{ activeSide === "front" ? "Front side" : "Back side" }}</strong>
+            <div class="checkout-side-switch" aria-label="Card side">
+              <button
+                v-for="side in checkoutSides"
+                :key="side"
+                type="button"
+                :class="{ active: activeSide === side }"
+                :aria-pressed="activeSide === side"
+                @click="activeSide = side"
+              >
+                {{ side === "front" ? "Front" : "Back" }}
+              </button>
+            </div>
+          </div>
           <CanvasPreview
             :layers="layers"
             :width-mm="design.widthMm"
             :height-mm="design.heightMm"
-            label="Checkout card preview"
-            empty-label="Draft"
+            :background="previewBackground"
+            :label="`Checkout ${activeSide} card preview`"
+            :empty-label="activeSide === 'front' ? 'Front' : 'Back'"
           />
         </section>
 
@@ -214,13 +280,10 @@ async function submitOrder() {
               </strong>
               <ul v-if="preflightReport.issues.length">
                 <li v-for="(issue, index) in preflightReport.issues" :key="`${issue.code}-${index}`">
+                  {{ issue.side === "front" ? "Front" : issue.side === "back" ? "Back" : "Document" }}
                   [{{ issue.level }}] {{ issue.message }}
                 </li>
               </ul>
-              <label v-if="!preflightReport.valid" class="checkout-toggle">
-                <input v-model="forceOrderDespitePreflight" type="checkbox" />
-                <span>Create order anyway (override)</span>
-              </label>
             </div>
           </div>
 
@@ -229,7 +292,11 @@ async function submitOrder() {
             <RouterLink v-if="orderError.includes('Sign in')" to="/account">Open account</RouterLink>
           </p>
 
-          <button class="primary-action" type="submit" :disabled="submitting || preflightLoading">
+          <button
+            class="primary-action"
+            type="submit"
+            :disabled="submitting || preflightLoading || preflightBlocksOrder"
+          >
             {{ submitting ? "Creating order..." : "Create order" }}
           </button>
         </form>

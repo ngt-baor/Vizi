@@ -8,6 +8,7 @@ import java.util.Map;
 import com.example.vizi.auth.AuthService;
 import com.example.vizi.design.Design;
 import com.example.vizi.design.DesignRepository;
+import com.example.vizi.preflight.PreflightService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,17 +30,20 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final DesignRepository designRepository;
     private final AuthService authService;
+    private final PreflightService preflightService;
     private final ObjectMapper objectMapper;
 
     OrderService(
             OrderRepository orderRepository,
             DesignRepository designRepository,
             AuthService authService,
+            PreflightService preflightService,
             ObjectMapper objectMapper
     ) {
         this.orderRepository = orderRepository;
         this.designRepository = designRepository;
         this.authService = authService;
+        this.preflightService = preflightService;
         this.objectMapper = objectMapper;
     }
 
@@ -54,6 +58,14 @@ public class OrderService {
         }
         if (request.quantity() % 100 != 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quantity must be a multiple of 100");
+        }
+        var preflight = preflightService.check(
+                design.canvasJson(),
+                design.widthMm().doubleValue(),
+                design.heightMm().doubleValue()
+        );
+        if (!preflight.valid()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Design has preflight errors");
         }
 
         var total = calculateTotal(request.quantity(), paper, request.roundedCorners());

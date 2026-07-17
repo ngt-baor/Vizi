@@ -20,11 +20,13 @@ const props = withDefaults(
     showSafeZoneGuides?: boolean;
     safeZoneMm?: number;
     bleedMm?: number;
+    background?: string;
   }>(),
   {
     showSafeZoneGuides: false,
     safeZoneMm: 3,
     bleedMm: 2,
+    background: "#fffdf8",
   },
 );
 
@@ -53,6 +55,7 @@ const frameStyle = computed(() => ({
   aspectRatio: `${props.widthMm} / ${props.heightMm}`,
   "--canvas-width-mm": props.widthMm,
   "--canvas-height-mm": props.heightMm,
+  background: props.background,
 }));
 
 function numberValue(value: unknown, fallback: number): number {
