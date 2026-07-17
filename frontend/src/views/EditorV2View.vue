@@ -70,8 +70,10 @@ import {
   preflightDesign,
   removeBackgroundImageAsset,
   searchIcons8,
+  searchStock,
   type Icons8Icon,
   type PreflightIssue,
+  type StockApiAsset,
   type PreflightReport,
   updateDesign,
 } from "../api";
@@ -176,6 +178,14 @@ const stockKindFilter = ref<StockKindFilter>("all");
 const stockCollectionFilter = ref("All");
 const stockFavorites = ref<string[]>(readStoredStockIds("vizi.editor.stock.favorites"));
 const stockRecent = ref<string[]>(readStoredStockIds("vizi.editor.stock.recent"));
+const remoteStockAssets = ref<StockAsset[]>([]);
+const stockRemoteReady = ref(false);
+const stockLoading = ref(false);
+const stockError = ref("");
+const stockPage = ref(1);
+const stockHasMore = ref(false);
+let stockRequestId = 0;
+let stockSearchTimer: number | null = null;
 const fontSearch = ref("");
 const fontResultLimit = ref(40);
 const backendDesignId = computed(() => {
@@ -253,9 +263,19 @@ const filteredFontOptions = computed(() => {
 });
 const visibleFontOptions = computed(() => filteredFontOptions.value.slice(0, fontResultLimit.value));
 const hiddenFontCount = computed(() => Math.max(0, filteredFontOptions.value.length - visibleFontOptions.value.length));
+const stockBrowseAssets = computed<StockAsset[]>(() => (
+  stockRemoteReady.value ? remoteStockAssets.value : stockAssets
+));
+
+const stockAllAssets = computed<StockAsset[]>(() => {
+  const byId = new Map(stockAssets.map((asset) => [asset.id, asset]));
+  remoteStockAssets.value.forEach((asset) => byId.set(asset.id, asset));
+  return [...byId.values()];
+});
+
 const stockCollections = computed(() => [
   "All",
-  ...new Set(stockAssets.map((asset) => asset.collection)),
+  ...new Set(stockBrowseAssets.value.map((asset) => asset.collection)),
 ]);
 
 const stockResults = computed<StockAsset[]>(() => {
@@ -265,9 +285,10 @@ const stockResults = computed<StockAsset[]>(() => {
     : stockView.value === "recent"
       ? stockRecent.value
       : null;
+  const catalog = ids ? stockAllAssets.value : stockBrowseAssets.value;
   const source = ids
-    ? ids.map((id) => stockAssets.find((asset) => asset.id === id)).filter((asset): asset is StockAsset => Boolean(asset))
-    : stockAssets;
+    ? ids.map((id) => catalog.find((asset) => asset.id === id)).filter((asset): asset is StockAsset => Boolean(asset))
+    : catalog;
 
   return source.filter((asset) => {
     const matchesKind = stockKindFilter.value === "all" || asset.kind === stockKindFilter.value;
@@ -820,6 +841,63 @@ function toggleStockFavorite(asset: StockAsset): void {
 function addStockRecent(id: string): void {
   stockRecent.value = [id, ...stockRecent.value.filter((item) => item !== id)].slice(0, 30);
   persistStoredStockIds("vizi.editor.stock.recent", stockRecent.value);
+}
+
+function mapStockApiAsset(asset: StockApiAsset): StockAsset {
+  const kind: StockKind = asset.kind === "illustration" || asset.kind === "background"
+    ? asset.kind
+    : "photo";
+  return {
+    id: asset.id,
+    title: asset.title,
+    kind,
+    collection: asset.collection || "Openverse",
+    previewUrl: asset.previewUrl,
+    sourceUrl: asset.sourceUrl,
+    tags: asset.tags,
+    credit: asset.credit,
+  };
+}
+
+async function loadStockAssets(reset = true): Promise<void> {
+  if (!reset && (stockLoading.value || !stockHasMore.value)) return;
+
+  const requestId = ++stockRequestId;
+  const page = reset ? 1 : stockPage.value + 1;
+  if (reset) stockError.value = "";
+  stockLoading.value = true;
+
+  try {
+    const response = await searchStock(
+      stockQuery.value.trim(),
+      stockKindFilter.value,
+      page,
+      12,
+    );
+    if (requestId !== stockRequestId) return;
+
+    const incoming = response.assets.map(mapStockApiAsset);
+    remoteStockAssets.value = reset
+      ? incoming
+      : [
+          ...remoteStockAssets.value,
+          ...incoming.filter((asset) => !remoteStockAssets.value.some((current) => current.id === asset.id)),
+        ];
+    stockRemoteReady.value = true;
+    stockPage.value = response.page;
+    stockHasMore.value = response.hasMore;
+    stockCollectionFilter.value = "All";
+  } catch {
+    if (requestId !== stockRequestId) return;
+    if (reset) {
+      remoteStockAssets.value = [];
+      stockRemoteReady.value = false;
+    }
+    stockHasMore.value = false;
+    stockError.value = "Online stock is unavailable. Showing the starter catalog.";
+  } finally {
+    if (requestId === stockRequestId) stockLoading.value = false;
+  }
 }
 
 async function addStockAsset(asset: StockAsset): Promise<void> {
@@ -1650,6 +1728,21 @@ watch(fontSearch, () => {
   fontResultLimit.value = 40;
 });
 
+watch([stockQuery, stockKindFilter], () => {
+  if (activePanel.value !== "stock") return;
+  if (stockSearchTimer !== null) window.clearTimeout(stockSearchTimer);
+  stockSearchTimer = window.setTimeout(() => {
+    stockSearchTimer = null;
+    void loadStockAssets(true);
+  }, 350);
+});
+
+watch(activePanel, (panel) => {
+  if (panel === "stock" && !stockRemoteReady.value && !stockLoading.value) {
+    void loadStockAssets(true);
+  }
+});
+
 onMounted(() => {
   window.addEventListener("pointerdown", handleZoomMenuPointerDown);
   window.addEventListener("keydown", handleZoomMenuKeydown);
@@ -1658,6 +1751,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (stockSearchTimer !== null) window.clearTimeout(stockSearchTimer);
   window.removeEventListener("pointerdown", handleZoomMenuPointerDown);
   window.removeEventListener("keydown", handleZoomMenuKeydown);
   window.removeEventListener("keydown", handleEditorKeydown);
@@ -1987,6 +2081,10 @@ onBeforeUnmount(() => {
         {{ option.label }}
       </button>
     </div>
+    <p v-if="stockLoading" class="editor-v2__stock-status" role="status">Loading online stock...</p>
+    <p v-else-if="stockError" class="editor-v2__stock-status editor-v2__stock-status--error" role="status">
+      {{ stockError }}
+    </p>
     <div class="editor-v2__section-label editor-v2__section-label--subtle">
       <span>Collections</span>
       <span>{{ stockCollections.length - 1 }}</span>
@@ -2031,10 +2129,19 @@ onBeforeUnmount(() => {
         </button>
         <div class="editor-v2__stock-meta">
           <strong>{{ asset.title }}</strong>
-          <span>{{ asset.collection }}</span>
+          <span :title="asset.credit">{{ asset.credit || asset.collection }}</span>
         </div>
       </article>
     </div>
+    <button
+      v-if="stockView === 'browse' && stockHasMore"
+      class="editor-v2__stock-load-more"
+      type="button"
+      :disabled="stockLoading"
+      @click="loadStockAssets(false)"
+    >
+      {{ stockLoading ? "Loading..." : "Load more" }}
+    </button>
   </section>
   <div v-else class="editor-v2__panel-empty">
     {{ stockView === 'favorites' ? 'No favorites yet.' : stockView === 'recent' ? 'No recent stock assets.' : 'No stock assets match these filters.' }}
@@ -3635,6 +3742,41 @@ a {
 .editor-v2__stock-meta span {
   color: var(--sidebar-muted);
   font-size: 9px;
+}
+
+.editor-v2__stock-status {
+  margin: 9px 0 0;
+  color: var(--sidebar-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.editor-v2__stock-status--error {
+  color: #f2a9c9;
+}
+
+.editor-v2__stock-load-more {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 10px;
+  border: 1px solid #b4367d;
+  border-radius: 5px;
+  background: #351424;
+  color: #ff8fc7;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.editor-v2__stock-load-more:hover:not(:disabled) {
+  border-color: #f36db4;
+  background: #4a1931;
+}
+
+.editor-v2__stock-load-more:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .editor-v2__icons8-search {

@@ -124,6 +124,30 @@ export type Icons8SearchResponse = {
   icons: Icons8Icon[];
 };
 
+export type StockApiAsset = {
+  id: string;
+  title: string;
+  kind: string;
+  collection: string;
+  previewUrl: string;
+  sourceUrl: string;
+  creator: string;
+  license: string;
+  licenseVersion: string;
+  tags: string[];
+  credit: string;
+};
+
+export type StockSearchResponse = {
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+  source: string;
+  message: string;
+  assets: StockApiAsset[];
+};
+
 export type OrderItemResponse = {
 
   id: number;
@@ -566,6 +590,29 @@ export async function searchIcons8(
   }
 
   return response.json() as Promise<Icons8SearchResponse>;
+}
+
+export async function searchStock(
+  query = "",
+  kind = "all",
+  page = 1,
+  pageSize = 12,
+): Promise<StockSearchResponse> {
+  const params = new URLSearchParams({
+    q: query,
+    kind,
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  const response = await fetch(apiBaseUrl + "/api/stock/search?" + params, {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error("Stock search failed: " + response.status);
+  }
+
+  return response.json() as Promise<StockSearchResponse>;
 }
 
 export async function rewriteDesignText(

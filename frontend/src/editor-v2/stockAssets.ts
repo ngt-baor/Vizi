@@ -11,8 +11,7 @@ export type StockAsset = {
   credit: string;
 };
 
-// Starter catalog for the Stock panel. Providers will move behind the backend
-// once the panel workflow is verified end to end.
+// Starter catalog used when the remote stock provider is unavailable.
 export const stockAssets: StockAsset[] = [
   {
     id: "photo-studio-lights",
