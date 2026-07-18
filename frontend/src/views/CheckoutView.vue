@@ -4,8 +4,10 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   createOrder,
   getDesign,
+  listPapers,
   preflightDesign,
   type DesignDetail,
+  type PaperStock,
   type PreflightReport,
 } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
@@ -29,7 +31,8 @@ const loading = ref(true);
 const error = ref("");
 const orderError = ref("");
 const submitting = ref(false);
-const paper = ref("matte-350");
+const paper = ref("");
+const paperOptions = ref<PaperStock[]>([]);
 const quantity = ref(100);
 const roundedCorners = ref(false);
 const preflightReport = ref<PreflightReport | null>(null);
@@ -39,13 +42,7 @@ const preflightBlocksOrder = computed(() =>
   preflightReport.value?.issues.some((issue) => issue.level === "ERROR") ?? false,
 );
 
-const paperOptions = [
-  { id: "matte-350", label: "Matte 350gsm", pricePer100: 180000 },
-  { id: "silk-400", label: "Silk 400gsm", pricePer100: 240000 },
-  { id: "linen-300", label: "Linen 300gsm", pricePer100: 280000 },
-];
 const checkoutSides: EditorSide[] = ["front", "back"];
-const quantityOptions = [100, 200, 500, 1000];
 const currency = new Intl.NumberFormat("vi-VN", {
   style: "currency",
   currency: "VND",
@@ -53,18 +50,44 @@ const currency = new Intl.NumberFormat("vi-VN", {
 });
 
 const selectedPaper = computed(() =>
-  paperOptions.find((option) => option.id === paper.value) ?? paperOptions[0],
+  paperOptions.value.find((option) => option.code === paper.value) ?? null,
 );
-const roundedCornerPrice = computed(() => roundedCorners.value ? Math.ceil(quantity.value / 100) * 30000 : 0);
-const subtotal = computed(() => Math.ceil(quantity.value / 100) * selectedPaper.value.pricePer100);
+const validQuantity = computed(() =>
+  Number.isInteger(quantity.value) && quantity.value >= 1 && quantity.value <= 100000,
+);
+const roundedCornerPrice = computed(() =>
+  roundedCorners.value && validQuantity.value ? Math.round(quantity.value / 100 * 30000) : 0,
+);
+const subtotal = computed(() =>
+  selectedPaper.value && validQuantity.value
+    ? Math.round(quantity.value / 100 * selectedPaper.value.pricePer100)
+    : 0,
+);
 const estimatedTotal = computed(() => subtotal.value + roundedCornerPrice.value);
+const canSubmit = computed(() =>
+  !!selectedPaper.value
+  && selectedPaper.value.status === "IN_STOCK"
+  && validQuantity.value
+  && !submitting.value
+  && !preflightLoading.value
+  && !preflightBlocksOrder.value,
+);
 
 onMounted(async () => {
   const rawId = route.params.designId;
   const designId = Number(Array.isArray(rawId) ? rawId[0] : rawId);
   try {
-    design.value = await getDesign(designId);
-    checkoutPages.value = readEditorPreviewPages(design.value.canvasJson);
+    const [loadedDesign, loadedPapers] = await Promise.all([
+      getDesign(designId),
+      listPapers(),
+    ]);
+    design.value = loadedDesign;
+    checkoutPages.value = readEditorPreviewPages(loadedDesign.canvasJson);
+    paperOptions.value = loadedPapers;
+    paper.value = loadedPapers.find((option) => option.status === "IN_STOCK")?.code ?? "";
+    if (!paper.value) {
+      orderError.value = "No paper type is currently in stock.";
+    }
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot load checkout";
   } finally {
@@ -92,10 +115,19 @@ async function runPreflight(): Promise<PreflightReport | null> {
   }
 }
 
-async function submitOrder() {
+async function submitOrder(): Promise<void> {
   if (!design.value || submitting.value) {
     return;
   }
+  if (!validQuantity.value) {
+    orderError.value = "Quantity must be a whole number between 1 and 100,000.";
+    return;
+  }
+  if (!selectedPaper.value || selectedPaper.value.status !== "IN_STOCK") {
+    orderError.value = "Select a paper type that is in stock.";
+    return;
+  }
+
   submitting.value = true;
   orderError.value = "";
   try {
@@ -170,20 +202,31 @@ async function submitOrder() {
         <form class="checkout-panel" aria-label="Print checkout options" @submit.prevent="submitOrder">
           <label>
             <span>Paper</span>
-            <select v-model="paper" aria-label="Paper type">
-              <option v-for="option in paperOptions" :key="option.id" :value="option.id">
-                {{ option.label }}
+            <select v-model="paper" aria-label="Paper type" required>
+              <option
+                v-for="option in paperOptions"
+                :key="option.id"
+                :value="option.code"
+                :disabled="option.status === 'OUT_OF_STOCK'"
+              >
+                {{ option.name }}{{ option.status === "OUT_OF_STOCK" ? " - Out of stock" : "" }}
               </option>
             </select>
           </label>
 
           <label>
             <span>Quantity</span>
-            <select v-model.number="quantity" aria-label="Quantity">
-              <option v-for="option in quantityOptions" :key="option" :value="option">
-                {{ option }} cards
-              </option>
-            </select>
+            <input
+              v-model.number="quantity"
+              type="number"
+              min="1"
+              max="100000"
+              step="1"
+              inputmode="numeric"
+              aria-label="Quantity"
+              required
+            >
+            <small>Enter the exact number of cards to print.</small>
           </label>
 
           <label class="checkout-toggle">
@@ -194,11 +237,11 @@ async function submitOrder() {
           <dl class="checkout-summary">
             <div>
               <dt>Paper</dt>
-              <dd>{{ selectedPaper.label }}</dd>
+              <dd>{{ selectedPaper?.name ?? "Unavailable" }}</dd>
             </div>
             <div>
               <dt>Quantity</dt>
-              <dd>{{ quantity }} cards</dd>
+              <dd>{{ validQuantity ? quantity : 0 }} cards</dd>
             </div>
             <div>
               <dt>Rounded corners</dt>
@@ -238,11 +281,7 @@ async function submitOrder() {
             <RouterLink v-if="orderError.includes('Sign in')" to="/account">Open account</RouterLink>
           </p>
 
-          <button
-            class="primary-action"
-            type="submit"
-            :disabled="submitting || preflightLoading || preflightBlocksOrder"
-          >
+          <button class="primary-action" type="submit" :disabled="!canSubmit">
             {{ submitting ? "Creating order..." : "Create order" }}
           </button>
         </form>

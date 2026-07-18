@@ -42,6 +42,20 @@ export type AdminTemplate = TemplateDetail & {
   active: boolean;
 };
 
+export type PaperStock = {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  gsm: number | null;
+  pricePer100: number;
+  status: "IN_STOCK" | "OUT_OF_STOCK";
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type PaperStockInput = Omit<PaperStock, "id" | "createdAt" | "updatedAt">;
 export type AdminUser = {
   id: number;
   email: string;
@@ -213,6 +227,15 @@ export async function getTemplate(id: number): Promise<TemplateDetail> {
   return response.json() as Promise<TemplateDetail>;
 }
 
+export async function listPapers(): Promise<PaperStock[]> {
+  const response = await fetch(`${apiBaseUrl}/api/papers`);
+
+  if (!response.ok) {
+    throw new Error(`Paper catalog failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<PaperStock[]>;
+}
 async function getCsrf(): Promise<CsrfResponse> {
   const response = await fetch(`${apiBaseUrl}/api/auth/csrf`, {
     credentials: "include",
@@ -420,6 +443,46 @@ export async function adminPublishTemplate(payload: {
   return response.json() as Promise<AdminTemplate>;
 }
 
+export async function adminListPapers(): Promise<PaperStock[]> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/papers`, { credentials: "include" });
+  if (!response.ok) {
+    throw await authError(response, `Admin paper catalog failed: ${response.status}`);
+  }
+  return response.json() as Promise<PaperStock[]>;
+}
+
+export async function adminCreatePaper(payload: PaperStockInput): Promise<PaperStock> {
+  const response = await writeWithCsrf(
+    "/api/admin/papers",
+    "POST",
+    JSON.stringify(payload),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Create paper failed: ${response.status}`);
+  }
+  return response.json() as Promise<PaperStock>;
+}
+
+export async function adminUpdatePaper(id: number, payload: PaperStockInput): Promise<PaperStock> {
+  const response = await writeWithCsrf(
+    `/api/admin/papers/${id}`,
+    "PUT",
+    JSON.stringify(payload),
+    "application/json",
+  );
+  if (!response.ok) {
+    throw await authError(response, `Update paper failed: ${response.status}`);
+  }
+  return response.json() as Promise<PaperStock>;
+}
+
+export async function adminDeletePaper(id: number): Promise<void> {
+  const response = await writeWithCsrf(`/api/admin/papers/${id}`, "DELETE");
+  if (!response.ok) {
+    throw await authError(response, `Delete paper failed: ${response.status}`);
+  }
+}
 export async function adminListUsers(): Promise<AdminUser[]> {
   const response = await fetch(`${apiBaseUrl}/api/admin/users`, { credentials: "include" });
   if (!response.ok) {

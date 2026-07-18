@@ -2338,7 +2338,8 @@ h2 {
   font-weight: 800;
 }
 
-.checkout-panel select {
+.checkout-panel select,
+.checkout-panel input[type="number"] {
   width: 100%;
   min-height: 46px;
   border: 1px solid rgba(122, 93, 46, 0.2);
@@ -2347,6 +2348,12 @@ h2 {
   color: #2f281c;
   font: inherit;
   padding: 10px 12px;
+}
+
+.checkout-panel label small {
+  color: #756a5b;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .checkout-toggle {
@@ -2838,6 +2845,24 @@ h2 {
     top: 12px;
   }
 
+  .admin-paper-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .admin-paper-row > span:nth-child(3) {
+    justify-self: end;
+  }
+
+  .admin-paper-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .admin-paper-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+
   .editor-toolbar button {
     width: 48px;
     min-width: 48px;
@@ -3076,7 +3101,7 @@ body {
 }
 
 .admin-mode-control {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   max-width: 860px;
   border-radius: 14px;
   padding: 5px;
@@ -3132,6 +3157,101 @@ body {
   justify-content: center;
 }
 
+.admin-paper-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 22px 0 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--vizi-line);
+}
+
+.admin-paper-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--vizi-ink-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-paper-form input,
+.admin-paper-form select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--vizi-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--vizi-ink);
+  font: inherit;
+  padding: 9px 11px;
+}
+
+.admin-paper-form input:focus-visible,
+.admin-paper-form select:focus-visible {
+  outline: 3px solid rgba(168, 127, 51, 0.25);
+  outline-offset: 2px;
+}
+
+.admin-paper-description {
+  grid-column: span 2;
+}
+
+.admin-paper-active {
+  align-self: end;
+  min-height: 42px;
+}
+
+.admin-paper-form > .primary-action {
+  align-self: end;
+  min-height: 42px;
+  justify-content: center;
+}
+
+.admin-paper-list {
+  display: grid;
+  gap: 0;
+}
+
+.admin-paper-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.admin-paper-row > div:first-child {
+  min-width: 0;
+}
+
+.admin-paper-row > div:first-child strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-paper-status {
+  color: #1e6b48;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.admin-paper-status--out {
+  color: #a7463f;
+}
+
+.admin-paper-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admin-danger-action {
+  color: #a7463f;
+  border-color: rgba(167, 70, 63, 0.26);
+}
 .admin-album-layout {
   grid-template-columns: minmax(0, 520px);
   align-items: start;
@@ -3316,6 +3436,14 @@ body {
     max-height: none;
   }
 
+  .admin-paper-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-paper-description {
+    grid-column: 1 / -1;
+  }
+
   .app-shell--editor .editor-header {
     min-height: auto;
   }
@@ -3339,6 +3467,24 @@ body {
 
   .admin-mode-control {
     grid-template-columns: 1fr;
+  }
+
+  .admin-paper-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .admin-paper-row > span:nth-child(3) {
+    justify-self: end;
+  }
+
+  .admin-paper-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .admin-paper-actions button {
+    flex: 1;
+    justify-content: center;
   }
 
   .editor-toolbar button {

@@ -2,14 +2,18 @@
 import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import {
+  adminCreatePaper,
+  adminDeletePaper,
   adminGetDesign,
   adminListOrders,
+  adminListPapers,
   adminListTemplates,
   adminListUserDesigns,
   adminListUsers,
   adminPublishTemplate,
   adminSetTemplateActive,
   adminUpdateOrderStatus,
+  adminUpdatePaper,
   getCurrentUser,
   getDesign,
   type AdminDesignDetail,
@@ -18,16 +22,21 @@ import {
   type AdminTemplate,
   type AdminUser,
   type AuthUser,
+  type PaperStock,
+  type PaperStockInput,
 } from "../api";
 import TemplateThumbnail from "../components/TemplateThumbnail.vue";
 
-const tab = ref<"orders" | "templates" | "albums">("orders");
+type AdminTab = "orders" | "templates" | "papers" | "albums";
+
+const tab = ref<AdminTab>("orders");
 const me = ref<AuthUser | null>(null);
 const loading = ref(true);
 const error = ref("");
 const message = ref("");
 const orders = ref<AdminOrder[]>([]);
 const templates = ref<AdminTemplate[]>([]);
+const papers = ref<PaperStock[]>([]);
 const users = ref<AdminUser[]>([]);
 const selectedUserId = ref<number | null>(null);
 const selectedUserName = ref("");
@@ -35,8 +44,23 @@ const album = ref<AdminDesignDetail[]>([]);
 const albumLoading = ref(false);
 const publishing = ref(false);
 const publishDesignId = ref("");
+const paperSaving = ref(false);
+const editingPaperId = ref<number | null>(null);
+const paperForm = ref<PaperStockInput>(emptyPaperForm());
 
 const orderStatuses = ["PENDING_PAYMENT", "PAID", "PRINTING", "DONE", "CANCELLED"];
+
+function emptyPaperForm(): PaperStockInput {
+  return {
+    code: "",
+    name: "",
+    description: null,
+    gsm: 350,
+    pricePer100: 180000,
+    status: "IN_STOCK",
+    active: true,
+  };
+}
 
 function emptyAdminDesign(item: AdminDesignItem): AdminDesignDetail {
   return {
@@ -53,9 +77,16 @@ async function refresh(): Promise<void> {
     error.value = "Admin access required";
     return;
   }
-  orders.value = await adminListOrders();
-  templates.value = await adminListTemplates();
-  users.value = await adminListUsers();
+  const [loadedOrders, loadedTemplates, loadedPapers, loadedUsers] = await Promise.all([
+    adminListOrders(),
+    adminListTemplates(),
+    adminListPapers(),
+    adminListUsers(),
+  ]);
+  orders.value = loadedOrders;
+  templates.value = loadedTemplates;
+  papers.value = loadedPapers;
+  users.value = loadedUsers;
 }
 
 onMounted(async () => {
@@ -85,6 +116,66 @@ async function toggleTemplate(template: AdminTemplate): Promise<void> {
     message.value = `Template #${template.id} ${updated.active ? "published" : "unpublished"}`;
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot update template";
+  }
+}
+
+function editPaper(paper: PaperStock): void {
+  editingPaperId.value = paper.id;
+  paperForm.value = {
+    code: paper.code,
+    name: paper.name,
+    description: paper.description,
+    gsm: paper.gsm,
+    pricePer100: paper.pricePer100,
+    status: paper.status,
+    active: paper.active,
+  };
+  message.value = "";
+  error.value = "";
+}
+
+function resetPaperForm(): void {
+  editingPaperId.value = null;
+  paperForm.value = emptyPaperForm();
+}
+
+async function savePaper(): Promise<void> {
+  paperSaving.value = true;
+  error.value = "";
+  message.value = "";
+  try {
+    if (editingPaperId.value) {
+      const updated = await adminUpdatePaper(editingPaperId.value, paperForm.value);
+      papers.value = papers.value.map((item) => item.id === updated.id ? updated : item);
+      message.value = `Updated paper #${updated.id}`;
+    } else {
+      const created = await adminCreatePaper(paperForm.value);
+      papers.value = [...papers.value, created];
+      message.value = `Created paper #${created.id}`;
+    }
+    resetPaperForm();
+  } catch (unknownError) {
+    error.value = unknownError instanceof Error ? unknownError.message : "Cannot save paper";
+  } finally {
+    paperSaving.value = false;
+  }
+}
+
+async function removePaper(paper: PaperStock): Promise<void> {
+  if (!window.confirm(`Delete paper "${paper.name}"?`)) {
+    return;
+  }
+  error.value = "";
+  message.value = "";
+  try {
+    await adminDeletePaper(paper.id);
+    papers.value = papers.value.filter((item) => item.id !== paper.id);
+    if (editingPaperId.value === paper.id) {
+      resetPaperForm();
+    }
+    message.value = `Deleted paper #${paper.id}`;
+  } catch (unknownError) {
+    error.value = unknownError instanceof Error ? unknownError.message : "Cannot delete paper";
   }
 }
 
@@ -153,7 +244,7 @@ function money(value: number): string {
     <div class="section-heading admin-heading">
       <p class="eyebrow">Admin</p>
       <h1>Console</h1>
-      <p class="summary">Quản lý đơn in, template và album thiết kế của người dùng.</p>
+      <p class="summary">Manage print orders, templates, paper stock and customer designs.</p>
     </div>
 
     <p v-if="loading" class="muted">Loading admin console...</p>
@@ -166,6 +257,7 @@ function money(value: number): string {
       <div class="mode-control admin-mode-control" aria-label="Admin sections">
         <button type="button" :class="{ active: tab === 'orders' }" @click="tab = 'orders'">Orders</button>
         <button type="button" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">Templates</button>
+        <button type="button" :class="{ active: tab === 'papers' }" @click="tab = 'papers'">Paper stock</button>
         <button type="button" :class="{ active: tab === 'albums' }" @click="tab = 'albums'">User albums</button>
       </div>
 
@@ -195,7 +287,7 @@ function money(value: number): string {
         <div class="admin-panel-header">
           <div>
             <h3>Templates ({{ templates.length }})</h3>
-            <p class="muted">Xem trước template trước khi publish/unpublish.</p>
+            <p class="muted">Preview templates before publishing or unpublishing them.</p>
           </div>
           <form class="admin-publish" @submit.prevent="publishFromDesign">
             <label>
@@ -228,6 +320,75 @@ function money(value: number): string {
               </button>
             </div>
           </article>
+        </div>
+      </div>
+
+      <div v-else-if="tab === 'papers'" class="account-panel admin-panel">
+        <div class="admin-panel-header">
+          <div>
+            <h3>Paper stock ({{ papers.length }})</h3>
+            <p class="muted">Paper names, prices and availability used by checkout.</p>
+          </div>
+          <button v-if="editingPaperId" class="secondary-action" type="button" @click="resetPaperForm">
+            Add new paper
+          </button>
+        </div>
+
+        <form class="admin-paper-form" @submit.prevent="savePaper">
+          <label>
+            Code
+            <input v-model.trim="paperForm.code" required maxlength="64" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="couche-350" />
+          </label>
+          <label>
+            Name
+            <input v-model.trim="paperForm.name" required maxlength="160" placeholder="Couche 350gsm" />
+          </label>
+          <label>
+            GSM
+            <input v-model.number="paperForm.gsm" type="number" min="1" max="2000" placeholder="350" />
+          </label>
+          <label>
+            Price per 100
+            <input v-model.number="paperForm.pricePer100" type="number" min="0" step="1000" required />
+          </label>
+          <label>
+            Stock status
+            <select v-model="paperForm.status">
+              <option value="IN_STOCK">In stock</option>
+              <option value="OUT_OF_STOCK">Out of stock</option>
+            </select>
+          </label>
+          <label class="admin-paper-description">
+            Description
+            <input v-model.trim="paperForm.description" maxlength="500" placeholder="Surface and print characteristics" />
+          </label>
+          <label class="checkout-toggle admin-paper-active">
+            <input v-model="paperForm.active" type="checkbox">
+            <span>Visible at checkout</span>
+          </label>
+          <button class="primary-action" type="submit" :disabled="paperSaving">
+            {{ paperSaving ? "Saving..." : editingPaperId ? "Save changes" : "Add paper" }}
+          </button>
+        </form>
+
+        <div class="admin-paper-list">
+          <div v-for="paperItem in papers" :key="paperItem.id" class="admin-row admin-paper-row">
+            <div>
+              <strong>{{ paperItem.name }}</strong>
+              <p class="muted">
+                {{ paperItem.code }} - {{ paperItem.gsm ? paperItem.gsm + "gsm" : "No GSM" }} -
+                {{ money(paperItem.pricePer100) }} / 100
+              </p>
+            </div>
+            <span class="admin-paper-status" :class="{ 'admin-paper-status--out': paperItem.status === 'OUT_OF_STOCK' }">
+              {{ paperItem.status === "IN_STOCK" ? "In stock" : "Out of stock" }}
+            </span>
+            <span>{{ paperItem.active ? "Visible" : "Hidden" }}</span>
+            <div class="admin-paper-actions">
+              <button class="secondary-action" type="button" @click="editPaper(paperItem)">Edit</button>
+              <button class="secondary-action admin-danger-action" type="button" @click="removePaper(paperItem)">Delete</button>
+            </div>
+          </div>
         </div>
       </div>
 

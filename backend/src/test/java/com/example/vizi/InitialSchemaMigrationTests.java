@@ -76,6 +76,7 @@ class InitialSchemaMigrationTests {
             assertTables(url);
             assertColumnTypes(url);
             assertIndexes(url);
+            assertSeededPaperCatalog(url);
             assertMvpAcceptanceFlow(url);
             assertForeignKeysRejectMissingOwners(url);
             assertActiveTemplateQueryIsFastEnough(url);
@@ -121,6 +122,7 @@ class InitialSchemaMigrationTests {
                 "ai_usage_logs",
                 "orders",
                 "order_items",
+                "paper_stocks",
                 "flyway_schema_history"
         );
         try (var connection = DriverManager.getConnection(url, "vizi", PASSWORD);
@@ -148,7 +150,7 @@ class InitialSchemaMigrationTests {
                        and (
                          column_name in ('canvas_json', 'design_snapshot_json', 'print_config_json')
                          or column_name in ('created_at', 'updated_at')
-                         or column_name in ('total_amount', 'unit_price', 'subtotal', 'latency_ms')
+                         or column_name in ('total_amount', 'unit_price', 'subtotal', 'latency_ms', 'price_per_100', 'status', 'active')
                        )
                      """)) {
             var rows = new java.util.HashMap<String, String>();
@@ -164,6 +166,9 @@ class InitialSchemaMigrationTests {
                     .containsEntry("orders.total_amount", "numeric")
                     .containsEntry("order_items.unit_price", "numeric")
                     .containsEntry("ai_usage_logs.latency_ms", "bigint")
+                    .containsEntry("paper_stocks.price_per_100", "numeric")
+                    .containsEntry("paper_stocks.status", "character varying")
+                    .containsEntry("paper_stocks.active", "boolean")
                     .containsEntry("users.created_at", "timestamp with time zone")
                     .containsEntry("designs.updated_at", "timestamp with time zone");
         }
@@ -181,7 +186,8 @@ class InitialSchemaMigrationTests {
                 "idx_orders_user_id",
                 "idx_order_items_order_id",
                 "idx_order_items_design_id",
-                "idx_templates_active_category"
+                "idx_templates_active_category",
+                "idx_paper_stocks_active_status"
         );
         try (var connection = DriverManager.getConnection(url, "vizi", PASSWORD);
              var statement = connection.createStatement();
@@ -195,6 +201,20 @@ class InitialSchemaMigrationTests {
                 indexes.add(rs.getString("indexname"));
             }
             assertThat(indexes).containsAll(expectedIndexes);
+        }
+    }
+
+    private static void assertSeededPaperCatalog(String url) throws SQLException {
+        try (var connection = DriverManager.getConnection(url, "vizi", PASSWORD);
+             var statement = connection.createStatement();
+             var rs = statement.executeQuery("""
+                     select count(*) as paper_count,
+                            count(*) filter (where status = 'IN_STOCK' and active = true) as available_count
+                     from paper_stocks
+                     """)) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getInt("paper_count")).isEqualTo(7);
+            assertThat(rs.getInt("available_count")).isEqualTo(7);
         }
     }
 

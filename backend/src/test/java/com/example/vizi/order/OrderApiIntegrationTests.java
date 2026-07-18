@@ -387,6 +387,42 @@ class OrderApiIntegrationTests {
         assertThat(orderRepository.count()).isZero();
     }
 
+    @Test
+    void ownerCanOrderAnExactArbitraryQuantity() throws Exception {
+        userRepository.save(new User("exact-quantity@example.test", "test-hash", "Exact Quantity"));
+        var template = templateRepository.save(new Template(
+                "Exact Quantity Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[{\"type\":\"text\",\"text\":\"Exact\"}]}",
+                true
+        ));
+        var createDesignResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("exact-quantity@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createDesignResponse.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(post("/api/orders")
+                        .with(user("exact-quantity@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "matte-350",
+                                  "quantity": 137,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(designId.longValue())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.totalAmount").value(246600.00))
+                .andExpect(jsonPath("$.items[0].quantity").value(137))
+                .andExpect(jsonPath("$.items[0].subtotal").value(246600.00));
+    }
     static boolean localPostgresAvailable() {
         if (PASSWORD == null || PASSWORD.isBlank()) {
             return false;

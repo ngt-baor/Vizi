@@ -8,6 +8,8 @@ import java.util.Map;
 import com.example.vizi.auth.AuthService;
 import com.example.vizi.design.Design;
 import com.example.vizi.design.DesignRepository;
+import com.example.vizi.paper.PaperCatalogService;
+import com.example.vizi.paper.PaperCatalogService.OrderPaper;
 import com.example.vizi.preflight.PreflightService;
 
 import org.springframework.http.HttpStatus;
@@ -20,17 +22,14 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class OrderService {
 
-    private static final Map<String, PaperOption> PAPER_OPTIONS = Map.of(
-            "matte-350", new PaperOption("Matte 350gsm", new BigDecimal("180000")),
-            "silk-400", new PaperOption("Silk 400gsm", new BigDecimal("240000")),
-            "linen-300", new PaperOption("Linen 300gsm", new BigDecimal("280000"))
-    );
+    private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
     private static final BigDecimal ROUNDED_CORNERS_PRICE_PER_100 = new BigDecimal("30000");
 
     private final OrderRepository orderRepository;
     private final DesignRepository designRepository;
     private final AuthService authService;
     private final PreflightService preflightService;
+    private final PaperCatalogService paperCatalogService;
     private final ObjectMapper objectMapper;
 
     OrderService(
@@ -38,12 +37,14 @@ public class OrderService {
             DesignRepository designRepository,
             AuthService authService,
             PreflightService preflightService,
+            PaperCatalogService paperCatalogService,
             ObjectMapper objectMapper
     ) {
         this.orderRepository = orderRepository;
         this.designRepository = designRepository;
         this.authService = authService;
         this.preflightService = preflightService;
+        this.paperCatalogService = paperCatalogService;
         this.objectMapper = objectMapper;
     }
 
@@ -52,13 +53,7 @@ public class OrderService {
         var user = authService.requireUser(email);
         var design = designRepository.findByIdAndUser_Id(request.designId(), user.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
-        var paper = PAPER_OPTIONS.get(request.paper());
-        if (paper == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported paper option");
-        }
-        if (request.quantity() % 100 != 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quantity must be a multiple of 100");
-        }
+        var paper = paperCatalogService.requireOrderable(request.paper());
         var preflight = preflightService.check(
                 design.canvasJson(),
                 design.widthMm().doubleValue(),
@@ -119,21 +114,26 @@ public class OrderService {
         return OrderResponse.from(orderRepository.save(order));
     }
 
-    private static BigDecimal calculateTotal(int quantity, PaperOption paper, boolean roundedCorners) {
-        var batches = BigDecimal.valueOf(quantity).divide(BigDecimal.valueOf(100), 0, RoundingMode.UP);
-        var total = paper.pricePer100().multiply(batches);
-        return roundedCorners ? total.add(ROUNDED_CORNERS_PRICE_PER_100.multiply(batches)) : total;
+    private static BigDecimal calculateTotal(int quantity, OrderPaper paper, boolean roundedCorners) {
+        var quantityRatio = BigDecimal.valueOf(quantity).divide(ONE_HUNDRED, 4, RoundingMode.HALF_UP);
+        var total = paper.pricePer100().multiply(quantityRatio);
+        if (roundedCorners) {
+            total = total.add(ROUNDED_CORNERS_PRICE_PER_100.multiply(quantityRatio));
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
     }
 
     private static String normalizeNote(String note) {
         return note == null || note.isBlank() ? null : note.trim();
     }
 
-    private String printConfigJson(CreateOrderRequest request, PaperOption paper, Design design) {
+    private String printConfigJson(CreateOrderRequest request, OrderPaper paper, Design design) {
         try {
             return objectMapper.writeValueAsString(Map.of(
-                    "paper", request.paper(),
-                    "paperLabel", paper.label(),
+                    "paperId", paper.id(),
+                    "paper", paper.code(),
+                    "paperLabel", paper.name(),
+                    "pricePer100", paper.pricePer100(),
                     "quantity", request.quantity(),
                     "roundedCorners", request.roundedCorners(),
                     "widthMm", design.widthMm(),
@@ -142,8 +142,5 @@ public class OrderService {
         } catch (Exception exception) {
             throw new IllegalStateException("Cannot serialize print config", exception);
         }
-    }
-
-    private record PaperOption(String label, BigDecimal pricePer100) {
     }
 }
