@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { getDesign, getDesigns, updateDesign, type DesignDetail } from "../api";
 import CanvasPreview from "../components/CanvasPreview.vue";
+import StartDesignDialog from "../components/StartDesignDialog.vue";
 import {
   readEditorPreviewPages,
   type EditorPreviewLayer,
@@ -18,6 +19,7 @@ const loading = ref(true);
 const error = ref("");
 const renamingId = ref<number | null>(null);
 const renameError = ref("");
+const startDialogOpen = ref(false);
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -40,7 +42,6 @@ function toDraftCard(design: DesignDetail): DraftCard {
 
 async function loadDesigns(): Promise<void> {
   const list = await getDesigns();
-  // List API is metadata-only; load canvas so thumbnail matches editor front.
   const details = await Promise.all(list.map((item) => getDesign(item.id)));
   designs.value = details.map(toDraftCard);
 }
@@ -86,10 +87,13 @@ async function renameDraft(design: DraftCard, event: Event): Promise<void> {
 
 <template>
   <section class="home-view">
-    <div class="section-heading">
-      <p class="eyebrow">Private workspace</p>
-      <h1>My drafts</h1>
-      <p class="summary">Open a saved draft and continue editing.</p>
+    <div class="section-heading section-heading--with-action">
+      <div>
+        <p class="eyebrow">Private workspace</p>
+        <h1>My drafts</h1>
+        <p class="summary">Open a saved draft or start with a new card size.</p>
+      </div>
+      <button class="primary-action" type="button" @click="startDialogOpen = true">Start a design</button>
     </div>
 
     <p v-if="loading" class="muted">Loading drafts...</p>
@@ -101,7 +105,10 @@ async function renameDraft(design: DraftCard, event: Event): Promise<void> {
     <div v-else-if="designs.length === 0" class="account-panel">
       <p class="eyebrow">No drafts</p>
       <h2>Your workspace is empty</h2>
-      <RouterLink class="secondary-action" to="/">Start from templates</RouterLink>
+      <div class="draft-card-actions">
+        <button class="primary-action" type="button" @click="startDialogOpen = true">Start a design</button>
+        <RouterLink class="secondary-action" to="/templates">Start from templates</RouterLink>
+      </div>
     </div>
 
     <div v-else class="template-grid">
@@ -157,5 +164,7 @@ async function renameDraft(design: DraftCard, event: Event): Promise<void> {
         </div>
       </article>
     </div>
+
+    <StartDesignDialog :open="startDialogOpen" @close="startDialogOpen = false" />
   </section>
 </template>

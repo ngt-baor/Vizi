@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { RouterLink, useRouter } from "vue-router";
-import { createBlankDesign, getTemplates, type TemplateListItem } from "../api";
+import { RouterLink } from "vue-router";
+import { getTemplates, type TemplateListItem } from "../api";
+import StartDesignDialog from "../components/StartDesignDialog.vue";
 import TemplateThumbnail from "../components/TemplateThumbnail.vue";
-import { geoRedCanvasJson } from "../geoRedCanvas";
 
-const router = useRouter();
 const templates = ref<TemplateListItem[]>([]);
 const loading = ref(true);
 const error = ref("");
-const creating = ref(false);
-
-const geoRedCanvas = geoRedCanvasJson;
+const startDialogOpen = ref(false);
 
 onMounted(async () => {
   try {
@@ -22,34 +19,17 @@ onMounted(async () => {
     loading.value = false;
   }
 });
-
-async function startGeoRedDraft(): Promise<void> {
-  creating.value = true;
-  error.value = "";
-  try {
-    const design = await createBlankDesign({
-      name: "Geo Red Corporate Card",
-      widthMm: 90,
-      heightMm: 54,
-      canvasJson: geoRedCanvas,
-    });
-    await router.push({ name: "editor", params: { designId: String(design.id) } });
-  } catch (unknownError) {
-    error.value = unknownError instanceof Error
-      ? unknownError.message
-      : "Cannot create draft — sign in and ensure backend is restarted";
-  } finally {
-    creating.value = false;
-  }
-}
 </script>
 
 <template>
   <section class="home-view">
-    <div class="section-heading">
-      <p class="eyebrow">Templates</p>
-      <h1>Saved layouts</h1>
-      <p class="summary">Choose a business-card layout and open its canvas.</p>
+    <div class="section-heading section-heading--with-action">
+      <div>
+        <p class="eyebrow">Templates</p>
+        <h1>Saved layouts</h1>
+        <p class="summary">Choose a business-card layout or start with a blank card.</p>
+      </div>
+      <button class="primary-action" type="button" @click="startDialogOpen = true">Start a design</button>
     </div>
 
     <p v-if="loading" class="muted">Loading templates...</p>
@@ -57,17 +37,7 @@ async function startGeoRedDraft(): Promise<void> {
 
     <div v-if="!loading && templates.length === 0" class="empty-templates">
       <p class="muted">No active templates yet.</p>
-      <button
-        class="primary-action"
-        type="button"
-        :disabled="creating"
-        @click="startGeoRedDraft"
-      >
-        {{ creating ? "Creating..." : "Start Geo Red Corporate Card" }}
-      </button>
-      <p class="muted" style="margin-top: 10px; font-size: 13px">
-        Creates a draft with editable rect/text layers (no full-card image paste). Requires sign-in + backend support for blank drafts.
-      </p>
+      <button class="primary-action" type="button" @click="startDialogOpen = true">Start a design</button>
     </div>
 
     <div v-else-if="!loading" class="template-grid">
@@ -90,5 +60,7 @@ async function startGeoRedDraft(): Promise<void> {
         </div>
       </RouterLink>
     </div>
+
+    <StartDesignDialog :open="startDialogOpen" @close="startDialogOpen = false" />
   </section>
 </template>
