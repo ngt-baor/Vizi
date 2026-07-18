@@ -5,7 +5,9 @@ import CanvasPreview from "./CanvasPreview.vue";
 import {
   calculateImposition,
   PRINT_SHEETS,
+  reflectPlacement,
   type ImpositionPlacement,
+  type PlacementReflection,
   type PrintSheetKey,
 } from "../printImposition";
 import {
@@ -20,6 +22,8 @@ const props = defineProps<{
 }>();
 
 type SourceMode = "order" | "template";
+type PrintSideMode = EditorSide | "both";
+type BackAlignment = "long-edge" | "short-edge" | "same";
 
 type PrintSource = {
   kind: SourceMode;
@@ -41,7 +45,9 @@ type OrderPrintSource = {
 const sourceMode = ref<SourceMode>("order");
 const selectedOrderItemKey = ref("");
 const selectedTemplateId = ref("");
-const selectedSide = ref<EditorSide>("front");
+const selectedSide = ref<PrintSideMode>("both");
+const backAlignment = ref<BackAlignment>("long-edge");
+const showCropMarks = ref(true);
 const selectedSheet = ref<PrintSheetKey>("A4");
 const templateQuantity = ref("1");
 const printError = ref("");
@@ -110,8 +116,6 @@ const previewPages = computed(() => {
   return pages as Record<EditorSide, EditorPreviewPage>;
 });
 
-const activePage = computed(() => previewPages.value[selectedSide.value]);
-
 const imposition = computed(() => {
   if (!source.value) {
     return null;
@@ -127,6 +131,37 @@ const imposition = computed(() => {
     printError.value = error instanceof Error ? error.message : "Cannot calculate print layout";
     return null;
   }
+});
+
+const backReflection = computed<PlacementReflection>(() => {
+  if (backAlignment.value === "long-edge") {
+    return "x";
+  }
+  if (backAlignment.value === "short-edge") {
+    return "y";
+  }
+  return "none";
+});
+
+const renderedSheets = computed(() => {
+  if (!imposition.value) {
+    return [];
+  }
+  const sides: EditorSide[] = selectedSide.value === "both"
+    ? ["front", "back"]
+    : [selectedSide.value];
+  return imposition.value.placements.flatMap((placements, sheetIndex) =>
+    sides.map((side) => ({
+      key: String(sheetIndex) + ":" + side,
+      side,
+      sheetIndex,
+      placements: side === "back"
+        ? placements.map((placement) =>
+          reflectPlacement(placement, imposition.value!.sheet, backReflection.value),
+        )
+        : placements,
+    })),
+  );
 });
 
 watch(
@@ -155,6 +190,10 @@ watch([source, selectedSheet], () => {
 
 function sourceOptions(): string {
   return source.value?.kind === "order" ? "Order snapshot" : "Saved template";
+}
+
+function pageForSide(side: EditorSide): EditorPreviewPage {
+  return previewPages.value[side];
 }
 
 function placementStyle(placement: ImpositionPlacement, sheetWidthMm: number, sheetHeightMm: number): Record<string, string> {
@@ -206,7 +245,10 @@ function printCards(): void {
     class="admin-print-root"
     :data-print-card-count="imposition?.cardsPerSheet ?? 0"
     :data-print-sheet-count="imposition?.sheetCount ?? 0"
+    :data-print-rendered-sheet-count="renderedSheets.length"
     :data-print-total-count="imposition?.quantity ?? 0"
+    :data-print-side-mode="selectedSide"
+    :data-print-back-alignment="backAlignment"
   >
     <div class="admin-print-panel__chrome">
       <div class="admin-panel-header">
@@ -214,7 +256,7 @@ function printCards(): void {
           <p class="eyebrow">Print production</p>
           <h3>Impose business cards</h3>
           <p class="muted">
-            Use the frozen order snapshot or a published template, then place the exact quantity on an A-series sheet.
+            Use the frozen order snapshot or a published template, then prepare registered front and back sheets for production.
           </p>
         </div>
         <button
@@ -250,7 +292,7 @@ function printCards(): void {
           </div>
         </div>
 
-        <label class="admin-print-field" v-if="sourceMode === 'order'">
+        <label class="admin-print-field admin-print-field--source-select" v-if="sourceMode === 'order'">
           Order item
           <select v-model="selectedOrderItemKey" :disabled="orderSources.length === 0">
             <option v-if="orderSources.length === 0" value="">No order snapshots</option>
@@ -260,7 +302,7 @@ function printCards(): void {
           </select>
         </label>
 
-        <label class="admin-print-field" v-else>
+        <label class="admin-print-field admin-print-field--source-select" v-else>
           Saved template
           <select v-model="selectedTemplateId" :disabled="templates.length === 0">
             <option v-if="templates.length === 0" value="">No templates</option>
@@ -281,10 +323,20 @@ function printCards(): void {
         </div>
 
         <label class="admin-print-field">
-          Side
+          Printed sides
           <select v-model="selectedSide">
             <option value="front">Front</option>
             <option value="back">Back</option>
+            <option value="both">Front + Back</option>
+          </select>
+        </label>
+
+        <label v-if="selectedSide !== 'front'" class="admin-print-field">
+          Back alignment
+          <select v-model="backAlignment">
+            <option value="long-edge">Flip long edge (mirror X)</option>
+            <option value="short-edge">Flip short edge (mirror Y)</option>
+            <option value="same">Same position</option>
           </select>
         </label>
 
@@ -296,16 +348,22 @@ function printCards(): void {
             </option>
           </select>
         </label>
+
+        <label class="admin-print-toggle">
+          <input v-model="showCropMarks" type="checkbox" />
+          <span>Print crop marks</span>
+        </label>
       </div>
 
       <p class="admin-print-source-note">
-        {{ source?.label || "Choose an order or template" }} · {{ sourceOptions() }}
+        {{ source?.label || "Choose an order or template" }} - {{ sourceOptions() }}
       </p>
       <p v-if="printError" class="error-text" role="alert">{{ printError }}</p>
 
       <div v-if="imposition" class="admin-print-metrics" aria-label="Print layout summary">
         <div><strong>{{ imposition.cardsPerSheet }}</strong><span>cards / sheet</span></div>
-        <div><strong>{{ imposition.sheetCount }}</strong><span>sheets</span></div>
+        <div><strong>{{ imposition.sheetCount }}</strong><span>physical sheets</span></div>
+        <div><strong>{{ renderedSheets.length }}</strong><span>printed sides</span></div>
         <div><strong>{{ imposition.columns }} x {{ imposition.rows }}</strong><span>grid</span></div>
         <div><strong>{{ imposition.bleedMm }} mm</strong><span>bleed</span></div>
         <div><strong>{{ imposition.gutterMm }} mm</strong><span>gutter</span></div>
@@ -319,29 +377,40 @@ function printCards(): void {
 
     <div v-else class="admin-print-sheets" aria-label="Imposed print sheets">
       <section
-        v-for="(placements, sheetIndex) in imposition.placements"
-        :key="sheetIndex"
+        v-for="renderedSheet in renderedSheets"
+        :key="renderedSheet.key"
         class="admin-print-sheet"
         :style="{ width: imposition.sheet.widthMm + 'mm', height: imposition.sheet.heightMm + 'mm' }"
-        :aria-label="'Sheet ' + (sheetIndex + 1) + ' of ' + imposition.sheetCount"
+        :aria-label="'Sheet ' + (renderedSheet.sheetIndex + 1) + ' ' + renderedSheet.side"
+        :data-print-sheet-index="renderedSheet.sheetIndex + 1"
+        :data-print-side="renderedSheet.side"
       >
+        <div class="admin-print-sheet-label">
+          {{ source?.designName || "Card" }} - sheet {{ renderedSheet.sheetIndex + 1 }}/{{ imposition.sheetCount }} - {{ renderedSheet.side }}
+        </div>
         <div
-          v-for="(placement, cardIndex) in placements"
-          :key="String(sheetIndex) + '-' + String(cardIndex)"
+          v-for="(placement, cardIndex) in renderedSheet.placements"
+          :key="renderedSheet.key + '-' + String(cardIndex)"
           class="admin-print-card"
           :style="placementStyle(placement, imposition.sheet.widthMm, imposition.sheet.heightMm)"
-          :data-print-card-index="sheetIndex * imposition.cardsPerSheet + cardIndex + 1"
+          :data-print-card-index="renderedSheet.sheetIndex * imposition.cardsPerSheet + cardIndex + 1"
         >
+          <span v-if="showCropMarks" class="admin-print-crop-marks" aria-hidden="true">
+            <i class="admin-print-crop-mark admin-print-crop-mark--top-left"></i>
+            <i class="admin-print-crop-mark admin-print-crop-mark--top-right"></i>
+            <i class="admin-print-crop-mark admin-print-crop-mark--bottom-left"></i>
+            <i class="admin-print-crop-mark admin-print-crop-mark--bottom-right"></i>
+          </span>
           <div
             class="admin-print-card__canvas"
             :style="canvasStyle(placement)"
           >
             <CanvasPreview
-              :layers="activePage.layers"
+              :layers="pageForSide(renderedSheet.side).layers"
               :width-mm="placement.width"
               :height-mm="placement.height"
-              :background="activePage.background"
-              :label="(source?.designName || 'Card') + ' ' + selectedSide"
+              :background="pageForSide(renderedSheet.side).background"
+              :label="(source?.designName || 'Card') + ' ' + renderedSheet.side"
               empty-label=""
             />
           </div>

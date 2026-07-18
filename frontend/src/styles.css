@@ -3718,7 +3718,7 @@ body {
 
 .admin-print-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.4fr) repeat(3, minmax(130px, 0.7fr));
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 14px;
   align-items: end;
   margin-top: 22px;
@@ -3746,6 +3746,10 @@ body {
 .admin-print-fixed-quantity {
   display: grid;
   gap: 7px;
+}
+
+.admin-print-field--source-select {
+  grid-column: span 2;
 }
 
 .admin-print-field input,
@@ -3783,6 +3787,23 @@ body {
   font-weight: 600;
 }
 
+.admin-print-toggle {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  color: var(--vizi-ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-print-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--vizi-accent);
+}
+
 .admin-print-action {
   justify-self: end;
   white-space: nowrap;
@@ -3796,7 +3817,7 @@ body {
 
 .admin-print-metrics {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -3850,9 +3871,107 @@ body {
   box-shadow: 0 14px 38px rgba(58, 45, 27, 0.2);
 }
 
+.admin-print-sheet-label {
+  position: absolute;
+  top: 3mm;
+  left: 10mm;
+  color: #111;
+  font: 600 7pt/1.2 Arial, sans-serif;
+  letter-spacing: 0;
+}
+
 .admin-print-card {
   position: absolute;
   overflow: visible;
+}
+
+.admin-print-crop-marks {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  color: #111;
+  pointer-events: none;
+}
+
+.admin-print-crop-mark {
+  position: absolute;
+  width: 3mm;
+  height: 3mm;
+}
+
+.admin-print-crop-mark::before,
+.admin-print-crop-mark::after {
+  position: absolute;
+  content: "";
+  background: currentColor;
+}
+
+.admin-print-crop-mark--top-left {
+  top: -3mm;
+  left: -3mm;
+}
+
+.admin-print-crop-mark--top-right {
+  top: -3mm;
+  right: -3mm;
+}
+
+.admin-print-crop-mark--bottom-left {
+  bottom: -3mm;
+  left: -3mm;
+}
+
+.admin-print-crop-mark--bottom-right {
+  right: -3mm;
+  bottom: -3mm;
+}
+
+.admin-print-crop-mark--top-left::before,
+.admin-print-crop-mark--bottom-left::before {
+  left: 0;
+  width: 2mm;
+  height: 0.18mm;
+}
+
+.admin-print-crop-mark--top-right::before,
+.admin-print-crop-mark--bottom-right::before {
+  right: 0;
+  width: 2mm;
+  height: 0.18mm;
+}
+
+.admin-print-crop-mark--top-left::after,
+.admin-print-crop-mark--top-right::after {
+  top: 0;
+  width: 0.18mm;
+  height: 2mm;
+}
+
+.admin-print-crop-mark--bottom-left::after,
+.admin-print-crop-mark--bottom-right::after {
+  bottom: 0;
+  width: 0.18mm;
+  height: 2mm;
+}
+
+.admin-print-crop-mark--top-left::before,
+.admin-print-crop-mark--top-right::before {
+  bottom: 0;
+}
+
+.admin-print-crop-mark--bottom-left::before,
+.admin-print-crop-mark--bottom-right::before {
+  top: 0;
+}
+
+.admin-print-crop-mark--top-left::after,
+.admin-print-crop-mark--bottom-left::after {
+  right: 0;
+}
+
+.admin-print-crop-mark--top-right::after,
+.admin-print-crop-mark--bottom-right::after {
+  left: 0;
 }
 
 .admin-print-card__canvas {
@@ -3887,6 +4006,10 @@ body {
     grid-column: span 3;
   }
 
+  .admin-print-field--source-select {
+    grid-column: span 2;
+  }
+
   .admin-print-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -3898,6 +4021,10 @@ body {
   }
 
   .admin-print-source {
+    grid-column: auto;
+  }
+
+  .admin-print-field--source-select {
     grid-column: auto;
   }
 
@@ -3921,6 +4048,10 @@ body {
   body.admin-printing {
     min-width: 0;
     background: #fff;
+  }
+
+  body.admin-printing .topbar {
+    display: none !important;
   }
 
   body.admin-printing .admin-view > .admin-heading,

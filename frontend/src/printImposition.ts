@@ -1,5 +1,6 @@
 export type PrintSheetKey = "A0" | "A1" | "A2" | "A3" | "A4";
 export type CardRotation = 0 | 90;
+export type PlacementReflection = "none" | "x" | "y";
 
 export type PrintSheet = {
   key: PrintSheetKey;
@@ -40,6 +41,26 @@ export const PRINT_SHEETS: Record<PrintSheetKey, PrintSheet> = {
 export const DEFAULT_PRINT_BLEED_MM = 2;
 export const DEFAULT_PRINT_GUTTER_MM = 4;
 export const DEFAULT_PRINT_MARGIN_MM = 10;
+
+export function reflectPlacement(
+  placement: ImpositionPlacement,
+  sheet: PrintSheet,
+  reflection: PlacementReflection,
+): ImpositionPlacement {
+  if (reflection === "x") {
+    return {
+      ...placement,
+      x: sheet.widthMm - placement.x - placement.width,
+    };
+  }
+  if (reflection === "y") {
+    return {
+      ...placement,
+      y: sheet.heightMm - placement.y - placement.height,
+    };
+  }
+  return { ...placement };
+}
 
 type Candidate = {
   sheet: PrintSheet;
