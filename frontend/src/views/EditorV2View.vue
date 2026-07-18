@@ -24,6 +24,7 @@ import {
   Grid3x3,
   Hexagon,
   ImageIcon,
+  Keyboard,
   LayoutGrid,
   Layers3,
   Link2,
@@ -59,8 +60,9 @@ import {
   Type,
   Undo2,
   Upload,
+  X,
 } from "@lucide/vue";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Component } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
@@ -129,6 +131,32 @@ type FontOption = {
   searchValue: string;
 };
 
+type UploadedMedia = {
+  id: string;
+  name: string;
+  src: string;
+  pixelWidth?: number;
+  pixelHeight?: number;
+};
+
+type CanvasDropPoint = {
+  centerX: number;
+  centerY: number;
+};
+
+type LibraryDragItem =
+  | { kind: "text"; preset: TextPreset }
+  | { kind: "shape"; preset: ShapePreset }
+  | { kind: "frame"; preset: FramePreset }
+  | { kind: "stock"; id: string }
+  | { kind: "icon"; id: string }
+  | { kind: "media"; id: string };
+
+type ShortcutGroup = {
+  label: string;
+  items: Array<{ label: string; keys: string[] }>;
+};
+
 const route = useRoute();
 const router = useRouter();
 const documentId = computed(() => String(route.params.designId ?? "new"));
@@ -162,6 +190,15 @@ const imageInput = ref<HTMLInputElement | null>(null);
 const imageTargetLayerId = ref<string | null>(null);
 const draggedLayerId = ref<string | null>(null);
 const imageFileByLayer = new Map<string, File>();
+const mediaFileById = new Map<string, File>();
+const uploadedMedia = ref<UploadedMedia[]>([]);
+const mediaImportError = ref("");
+const libraryDragItem = ref<LibraryDragItem | null>(null);
+const canvasDropActive = ref(false);
+const mediaDropTarget = ref<"library" | "inspector" | null>(null);
+const shortcutsOpen = ref(false);
+const shortcutQuery = ref("");
+const shortcutSearchInput = ref<HTMLInputElement | null>(null);
 const backgroundRemovingLayerId = ref<string | null>(null);
 const backgroundRemovalError = ref("");
 const paletteExtractingLayerId = ref<string | null>(null);
@@ -205,6 +242,9 @@ const preflightErrorCount = computed(() => preflightReport.value?.issues.filter(
 const preflightWarningCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "WARNING").length ?? 0);
 
 const sides: EditorSide[] = ["front", "back"];
+const VIZI_DRAG_MIME = "application/x-vizi-editor-item";
+const IMAGE_FILE_PATTERN = /^image\/(png|jpeg|webp|gif)$/;
+const MAX_IMAGE_FILE_BYTES = 5 * 1024 * 1024;
 const MIN_ZOOM = 5;
 const MAX_ZOOM = 800;
 const zoomPresets = [5, 25, 50, 100, 200, 400, 800];
@@ -242,11 +282,73 @@ const textPresetOptions: Array<{
   { id: "body", label: "Add body text", sample: "Contact details", fontSize: 11, fontWeight: 400 },
 ];
 
+const shortcutGroups: ShortcutGroup[] = [
+  {
+    label: "Edit",
+    items: [
+      { label: "Undo", keys: ["Ctrl/Cmd+Z"] },
+      { label: "Redo", keys: ["Ctrl/Cmd+Y", "Ctrl/Cmd+Shift+Z"] },
+      { label: "Save draft", keys: ["Ctrl/Cmd+S"] },
+      { label: "Copy selected layer", keys: ["Ctrl/Cmd+C"] },
+      { label: "Paste layer", keys: ["Ctrl/Cmd+V"] },
+      { label: "Duplicate selected layer", keys: ["Ctrl/Cmd+D"] },
+      { label: "Delete selected layer", keys: ["Delete", "Backspace"] },
+      { label: "Clear selection / close dialog", keys: ["Esc"] },
+    ],
+  },
+  {
+    label: "Move & arrange",
+    items: [
+      { label: "Nudge selected layer", keys: ["Arrow keys"] },
+      { label: "Nudge faster", keys: ["Shift+Arrow"] },
+      { label: "Bring layer forward", keys: ["]"] },
+      { label: "Send layer backward", keys: ["["] },
+    ],
+  },
+  {
+    label: "Tools",
+    items: [
+      { label: "Select tool", keys: ["V"] },
+      { label: "Text tool", keys: ["T"] },
+      { label: "Rectangle tool", keys: ["R"] },
+      { label: "Ellipse tool", keys: ["O"] },
+      { label: "Open shortcut reference", keys: ["?"] },
+    ],
+  },
+  {
+    label: "Zoom",
+    items: [
+      { label: "Zoom in", keys: ["+", "Ctrl/Cmd++"] },
+      { label: "Zoom out", keys: ["-", "Ctrl/Cmd+-"] },
+      { label: "Actual size", keys: ["1"] },
+      { label: "Zoom to selection", keys: ["2"] },
+      { label: "Fit card", keys: ["Ctrl/Cmd+0"] },
+    ],
+  },
+];
+
 const activePage = computed(() => document.value.pages[activeSide.value]);
 const selectedLayer = computed<EditorLayerV2 | null>(() => (
   activePage.value.layers.find((layer) => layer.id === selectedLayerId.value) ?? null
 ));
-const imageLayers = computed(() => activePage.value.layers.filter((layer) => layer.type === "image" && safeImageSource(layer.src)));
+const mediaItems = computed<UploadedMedia[]>(() => {
+  const bySource = new Map<string, UploadedMedia>();
+  uploadedMedia.value.forEach((media) => bySource.set(media.src, media));
+  sides.forEach((side) => {
+    document.value.pages[side].layers.forEach((layer) => {
+      const src = layer.type === "image" ? safeImageSource(layer.src) : "";
+      if (!src || bySource.has(src)) return;
+      bySource.set(src, {
+        id: "layer-" + layer.id,
+        name: layer.name,
+        src,
+        pixelWidth: layer.pixelWidth,
+        pixelHeight: layer.pixelHeight,
+      });
+    });
+  });
+  return [...bySource.values()];
+});
 const documentPalette = computed(() => [...new Set(sides.flatMap((side) =>
   document.value.pages[side].layers.flatMap((layer) => layer.extractedPalette ?? []),
 ))]);
@@ -259,6 +361,17 @@ const filteredFontOptions = computed(() => {
   return query ? fontOptions.filter((font) => font.searchValue.includes(query)) : fontOptions;
 });
 const visibleFontOptions = computed(() => filteredFontOptions.value.slice(0, fontResultLimit.value));
+const filteredShortcutGroups = computed<ShortcutGroup[]>(() => {
+  const query = normalizeFontSearch(shortcutQuery.value);
+  if (!query) return shortcutGroups;
+  return shortcutGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        normalizeFontSearch([item.label, ...item.keys].join(" ")).includes(query)),
+    }))
+    .filter((group) => group.items.length > 0);
+});
 const hiddenFontCount = computed(() => Math.max(0, filteredFontOptions.value.length - visibleFontOptions.value.length));
 const stockBrowseAssets = computed<StockAsset[]>(() => (
   stockRemoteReady.value ? remoteStockAssets.value : stockAssets
@@ -658,6 +771,30 @@ function nudgeSelectedLayer(deltaX: number, deltaY: number): void {
   markDirty();
 }
 
+function dropPositionOverrides(point: CanvasDropPoint | undefined, width: number, height: number): Partial<EditorLayerV2> {
+  if (!point) return {};
+  return {
+    x: clampPercent(point.centerX - width / 2, 100 - width),
+    y: clampPercent(point.centerY - height / 2, 100 - height),
+  };
+}
+
+function moveLayerGroupToDrop(layers: EditorLayerV2[], point: CanvasDropPoint | undefined): void {
+  if (!point || !layers.length) return;
+  const left = Math.min(...layers.map((layer) => layer.x));
+  const top = Math.min(...layers.map((layer) => layer.y));
+  const right = Math.max(...layers.map((layer) => layer.x + layer.width));
+  const bottom = Math.max(...layers.map((layer) => layer.y + layer.height));
+  const groupWidth = right - left;
+  const groupHeight = bottom - top;
+  const targetLeft = clampPercent(point.centerX - groupWidth / 2, 100 - groupWidth);
+  const targetTop = clampPercent(point.centerY - groupHeight / 2, 100 - groupHeight);
+  layers.forEach((layer) => {
+    layer.x += targetLeft - left;
+    layer.y += targetTop - top;
+  });
+}
+
 function addLayer(type: EditorLayerType, source?: string, overrides: Partial<EditorLayerV2> = {}): EditorLayerV2 {
   const sequence = uniqueIdSuffix();
   const offset = (activePage.value.layers.length % 4) * 3;
@@ -695,18 +832,22 @@ function addLayer(type: EditorLayerType, source?: string, overrides: Partial<Edi
   return layer;
 }
 
-function addTextPreset(preset: TextPreset): void {
+function addTextPreset(preset: TextPreset, point?: CanvasDropPoint): EditorLayerV2 | null {
   const option = textPresetOptions.find((item) => item.id === preset);
-  if (!option) return;
-  addLayer("text", undefined, {
+  if (!option) return null;
+  const width = option.id === "title" ? 62 : 50;
+  const height = option.id === "body" ? 12 : 14;
+  const layer = addLayer("text", undefined, {
     name: option.id === "title" ? "Title" : option.id === "subtitle" ? "Subtitle" : "Body text",
     content: option.sample,
     fontSize: option.fontSize,
     fontWeight: option.fontWeight,
-    width: option.id === "title" ? 62 : 50,
-    height: option.id === "body" ? 12 : 14,
+    width,
+    height,
+    ...dropPositionOverrides(point, width, height),
   });
   activePanel.value = "text";
+  return layer;
 }
 
 function applyTextPreset(preset: TextPreset): void {
@@ -718,13 +859,19 @@ function applyTextPreset(preset: TextPreset): void {
   markDirty();
 }
 
-function addShapePreset(preset: ShapePreset): void {
-  addLayer(preset === "ellipse" ? "ellipse" : "rect", undefined, {
+function addShapePreset(preset: ShapePreset, point?: CanvasDropPoint): EditorLayerV2 {
+  const width = 28;
+  const height = 28;
+  const layer = addLayer(preset === "ellipse" ? "ellipse" : "rect", undefined, {
     name: preset === "rounded" ? "Rounded rectangle" : preset[0].toUpperCase() + preset.slice(1),
     shapeKind: preset,
     cornerRadius: preset === "rounded" ? 16 : 0,
+    width,
+    height,
+    ...dropPositionOverrides(point, width, height),
   });
   activePanel.value = "elements";
+  return layer;
 }
 
 function swapSelectedShape(preset: ShapePreset): void {
@@ -741,27 +888,28 @@ function swapSelectedShape(preset: ShapePreset): void {
   markDirty();
 }
 
-function addFramePreset(preset: FramePreset): void {
+function addFramePreset(preset: FramePreset, point?: CanvasDropPoint): EditorLayerV2[] {
   const spec = frameSpecs[preset];
-  if (!spec) return;
+  if (!spec) return [];
   const frameId = activeSide.value + "-frame-" + uniqueIdSuffix();
-  spec.cells.forEach((cell, index) => {
-    addLayer("image", undefined, {
-      id: frameId + "-" + String(index + 1),
-      name: spec.label + " " + String(index + 1),
-      x: cell.x,
-      y: cell.y,
-      width: cell.width,
-      height: cell.height,
-      shapeKind: cell.shapeKind,
-      frameId,
-      fill: "#e4e7ed",
-      stroke: "#c3cad6",
-      strokeWidth: 1,
-      cornerRadius: cell.shapeKind === "rounded" ? 16 : 0,
-    });
-  });
+  const layers = spec.cells.map((cell, index) => addLayer("image", undefined, {
+    id: frameId + "-" + String(index + 1),
+    name: spec.label + " " + String(index + 1),
+    x: cell.x,
+    y: cell.y,
+    width: cell.width,
+    height: cell.height,
+    shapeKind: cell.shapeKind,
+    frameId,
+    fill: "#e4e7ed",
+    stroke: "#c3cad6",
+    strokeWidth: 1,
+    cornerRadius: cell.shapeKind === "rounded" ? 16 : 0,
+  }));
+  moveLayerGroupToDrop(layers, point);
+  if (point) markDirty();
   activePanel.value = "elements";
+  return layers;
 }
 
 function openImagePicker(targetLayerId: string | null = null): void {
@@ -770,46 +918,236 @@ function openImagePicker(targetLayerId: string | null = null): void {
   imageInput.value?.click();
 }
 
-function handleImageFile(event: Event): void {
+function validateImageFile(file: File): string {
+  if (!IMAGE_FILE_PATTERN.test(file.type)) return "Only PNG, JPEG, WebP and GIF images are supported.";
+  if (file.size > MAX_IMAGE_FILE_BYTES) return "Each image must be 5 MB or smaller.";
+  return "";
+}
+
+function readImageFileSource(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      resolve(typeof reader.result === "string" ? safeImageSource(reader.result) : "");
+    }, { once: true });
+    reader.addEventListener("error", () => resolve(""), { once: true });
+    reader.readAsDataURL(file);
+  });
+}
+
+async function importMediaFile(file: File): Promise<UploadedMedia | null> {
+  const validationError = validateImageFile(file);
+  if (validationError) {
+    mediaImportError.value = validationError;
+    return null;
+  }
+  const source = await readImageFileSource(file);
+  if (!source) {
+    mediaImportError.value = "This image could not be read.";
+    return null;
+  }
+  const existing = uploadedMedia.value.find((media) => media.src === source);
+  if (existing) {
+    mediaFileById.set(existing.id, file);
+    return existing;
+  }
+  const pixelSize = await readImagePixelSize(source);
+  const media: UploadedMedia = {
+    id: "media-" + uniqueIdSuffix(),
+    name: file.name,
+    src: source,
+    ...pixelSize,
+  };
+  uploadedMedia.value = [media, ...uploadedMedia.value];
+  mediaFileById.set(media.id, file);
+  mediaImportError.value = "";
+  return media;
+}
+
+function addMediaAsset(media: UploadedMedia, point?: CanvasDropPoint): EditorLayerV2 {
+  const width = 36;
+  const height = 36;
+  const layer = addLayer("image", media.src, {
+    name: media.name,
+    width,
+    height,
+    pixelWidth: media.pixelWidth,
+    pixelHeight: media.pixelHeight,
+    ...dropPositionOverrides(point, width, height),
+  });
+  const file = mediaFileById.get(media.id);
+  if (file) imageFileByLayer.set(layer.id, file);
+  activePanel.value = "uploads";
+  return layer;
+}
+
+async function placeImageFile(file: File, point?: CanvasDropPoint, targetLayerId?: string | null): Promise<void> {
+  const media = await importMediaFile(file);
+  if (!media) return;
+  const target = targetLayerId
+    ? activePage.value.layers.find((layer) => layer.id === targetLayerId && layer.type === "image")
+    : null;
+  if (!target) {
+    addMediaAsset(media, point);
+    return;
+  }
+  target.src = media.src;
+  target.originalSrc = media.src;
+  target.processedSrc = undefined;
+  target.processedAssetId = undefined;
+  target.processedStorageKey = undefined;
+  target.extractedPalette = undefined;
+  target.pixelWidth = media.pixelWidth;
+  target.pixelHeight = media.pixelHeight;
+  target.visible = true;
+  const fileForMedia = mediaFileById.get(media.id);
+  if (fileForMedia) imageFileByLayer.set(target.id, fileForMedia);
+  selectedLayerId.value = target.id;
+  markDirty();
+}
+
+async function handleImageFile(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
+  const files = Array.from(input.files ?? []);
+  const targetId = imageTargetLayerId.value;
   input.value = "";
+  imageTargetLayerId.value = null;
   activeTool.value = "select";
-  if (!file || !/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
-    imageTargetLayerId.value = null;
+  for (const [index, file] of files.entries()) {
+    await placeImageFile(file, undefined, index === 0 ? targetId : null);
+  }
+}
+
+function hasFileDrag(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
+
+function droppedFiles(event: DragEvent): File[] {
+  return Array.from(event.dataTransfer?.files ?? []);
+}
+
+function startLibraryDrag(item: LibraryDragItem, event: DragEvent): void {
+  libraryDragItem.value = item;
+  if (!event.dataTransfer) return;
+  event.dataTransfer.effectAllowed = "copy";
+  event.dataTransfer.setData(VIZI_DRAG_MIME, JSON.stringify(item));
+  event.dataTransfer.setData("text/plain", "Vizi " + item.kind);
+}
+
+function finishLibraryDrag(): void {
+  libraryDragItem.value = null;
+  canvasDropActive.value = false;
+}
+
+function readLibraryDrag(event: DragEvent): LibraryDragItem | null {
+  if (libraryDragItem.value) return libraryDragItem.value;
+  const raw = event.dataTransfer?.getData(VIZI_DRAG_MIME);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<LibraryDragItem>;
+    if (value.kind === "text" && typeof value.preset === "string") return value as LibraryDragItem;
+    if (value.kind === "shape" && typeof value.preset === "string") return value as LibraryDragItem;
+    if (value.kind === "frame" && typeof value.preset === "string") return value as LibraryDragItem;
+    if ((value.kind === "stock" || value.kind === "icon" || value.kind === "media") && typeof value.id === "string") {
+      return value as LibraryDragItem;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function canvasDropPoint(event: DragEvent): CanvasDropPoint | null {
+  const canvas = canvasFrame.value?.querySelector<HTMLElement>("[data-editor-v2-canvas]");
+  const rect = canvas?.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
+    return null;
+  }
+  return {
+    centerX: Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100)),
+    centerY: Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100)),
+  };
+}
+
+function handleCanvasDragOver(event: DragEvent): void {
+  if (!hasFileDrag(event) && !libraryDragItem.value && !event.dataTransfer?.types.includes(VIZI_DRAG_MIME)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  canvasDropActive.value = Boolean(canvasDropPoint(event));
+}
+
+function handleCanvasDragLeave(event: DragEvent): void {
+  const nextTarget = event.relatedTarget as Node | null;
+  if (!(event.currentTarget as HTMLElement).contains(nextTarget)) canvasDropActive.value = false;
+}
+
+async function addLibraryItemAtPoint(item: LibraryDragItem, point: CanvasDropPoint): Promise<void> {
+  if (item.kind === "text") {
+    addTextPreset(item.preset, point);
+  } else if (item.kind === "shape") {
+    addShapePreset(item.preset, point);
+  } else if (item.kind === "frame") {
+    addFramePreset(item.preset, point);
+  } else if (item.kind === "stock") {
+    const asset = stockAllAssets.value.find((candidate) => candidate.id === item.id);
+    if (asset) await addStockAsset(asset, point);
+  } else if (item.kind === "icon") {
+    const icon = localIconResults.value.find((candidate) => candidate.id === item.id);
+    if (icon) await addLocalIcon(icon, point);
+  } else {
+    const media = mediaItems.value.find((candidate) => candidate.id === item.id);
+    if (media) addMediaAsset(media, point);
+  }
+}
+
+async function handleCanvasDrop(event: DragEvent): Promise<void> {
+  event.preventDefault();
+  const point = canvasDropPoint(event);
+  canvasDropActive.value = false;
+  if (!point) return;
+
+  const files = droppedFiles(event);
+  if (files.length) {
+    for (const [index, file] of files.entries()) {
+      await placeImageFile(file, {
+        centerX: Math.min(96, point.centerX + index * 2),
+        centerY: Math.min(96, point.centerY + index * 2),
+      });
+    }
     return;
   }
 
-  const reader = new FileReader();
-  reader.addEventListener("load", async () => {
-    const source = typeof reader.result === "string" ? safeImageSource(reader.result) : "";
-    const targetId = imageTargetLayerId.value;
-    imageTargetLayerId.value = null;
-    if (!source) return;
-    const pixelSize = await readImagePixelSize(source);
-    const target = targetId ? activePage.value.layers.find((layer) => layer.id === targetId && layer.type === "image") : null;
-    if (target) {
-      target.src = source;
-      target.originalSrc = source;
-      target.processedSrc = undefined;
-      target.processedAssetId = undefined;
-      target.processedStorageKey = undefined;
-      target.extractedPalette = undefined;
-      target.pixelWidth = pixelSize.pixelWidth;
-      target.pixelHeight = pixelSize.pixelHeight;
-      target.visible = true;
-      imageFileByLayer.set(target.id, file);
-      selectedLayerId.value = target.id;
-      markDirty();
-    } else {
-      const layer = addLayer("image", source, { name: file.name, ...pixelSize });
-      imageFileByLayer.set(layer.id, file);
-      activePanel.value = "uploads";
-    }
-  });
-  reader.readAsDataURL(file);
+  const item = readLibraryDrag(event);
+  libraryDragItem.value = null;
+  if (item) await addLibraryItemAtPoint(item, point);
 }
 
+function handleMediaDragOver(event: DragEvent, target: "library" | "inspector"): void {
+  if (!hasFileDrag(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  mediaDropTarget.value = target;
+}
+
+function handleMediaDragLeave(event: DragEvent, target: "library" | "inspector"): void {
+  const nextTarget = event.relatedTarget as Node | null;
+  if (!(event.currentTarget as HTMLElement).contains(nextTarget) && mediaDropTarget.value === target) {
+    mediaDropTarget.value = null;
+  }
+}
+
+async function handleMediaDrop(event: DragEvent): Promise<void> {
+  if (!hasFileDrag(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  mediaDropTarget.value = null;
+  const files = droppedFiles(event);
+  if (!files.length) return;
+  for (const file of files) await importMediaFile(file);
+  activePanel.value = "uploads";
+}
 function readStoredStockIds(key: string): string[] {
   try {
     const value: unknown = JSON.parse(window.localStorage.getItem(key) ?? "[]");
@@ -896,32 +1234,40 @@ async function loadStockAssets(reset = true): Promise<void> {
   }
 }
 
-async function addStockAsset(asset: StockAsset): Promise<void> {
+async function addStockAsset(asset: StockAsset, point?: CanvasDropPoint): Promise<EditorLayerV2 | null> {
   const source = safeImageSource(asset.previewUrl);
-  if (!source) return;
+  if (!source) return null;
   const pixelSize = await readImagePixelSize(source);
-  addLayer("image", source, {
+  const width = 52;
+  const height = 36;
+  const layer = addLayer("image", source, {
     name: "Stock - " + asset.title,
-    width: 52,
-    height: 36,
+    width,
+    height,
     ...pixelSize,
+    ...dropPositionOverrides(point, width, height),
   });
   addStockRecent(asset.id);
   activePanel.value = "stock";
+  return layer;
 }
 
-async function addLocalIcon(icon: LocalIcon): Promise<void> {
+async function addLocalIcon(icon: LocalIcon, point?: CanvasDropPoint): Promise<EditorLayerV2> {
   const source = localIconAsset(icon);
   const pixelSize = await readImagePixelSize(source);
-  addLayer("image", source, {
+  const width = 28;
+  const height = 28;
+  const layer = addLayer("image", source, {
     name: icon.label,
     iconSource: icon.source,
     iconId: icon.id,
-    width: 28,
-    height: 28,
+    width,
+    height,
     ...pixelSize,
+    ...dropPositionOverrides(point, width, height),
   });
   activePanel.value = "icon";
+  return layer;
 }
 
 async function removeBackgroundFromSelected(): Promise<void> {
@@ -1095,6 +1441,17 @@ function handleZoomMenuKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") zoomMenuOpen.value = false;
 }
 
+function openShortcutDialog(): void {
+  shortcutsOpen.value = true;
+  shortcutQuery.value = "";
+  void nextTick(() => shortcutSearchInput.value?.focus());
+}
+
+function closeShortcutDialog(): void {
+  shortcutsOpen.value = false;
+  shortcutQuery.value = "";
+}
+
 function isEditingTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement
     && Boolean(target.closest("input, textarea, select, [contenteditable=true]"));
@@ -1107,11 +1464,21 @@ function handleEditorKeydown(event: KeyboardEvent): void {
 
   if (key === "escape") {
     zoomMenuOpen.value = false;
-    if (!isEditingTarget(event.target)) selectedLayerId.value = null;
+    if (shortcutsOpen.value) {
+      event.preventDefault();
+      closeShortcutDialog();
+    } else if (!isEditingTarget(event.target)) {
+      selectedLayerId.value = null;
+    }
     return;
   }
   if (isEditingTarget(event.target)) return;
 
+  if (key === "?") {
+    event.preventDefault();
+    openShortcutDialog();
+    return;
+  }
   if (modifier && key === "z") {
     event.preventDefault();
     if (event.shiftKey) redo(); else undo();
@@ -1730,6 +2097,7 @@ onBeforeUnmount(() => {
       type="file"
       accept="image/png,image/jpeg,image/webp,image/gif"
       aria-label="Upload image"
+      multiple
       @change="handleImageFile"
     >
     <header class="editor-v2__header">
@@ -1846,9 +2214,34 @@ onBeforeUnmount(() => {
           <component :is="item.icon" :size="20" :stroke-width="1.7" aria-hidden="true" />
           <span>{{ item.label }}</span>
         </button>
+        <button
+          class="editor-v2__shortcut-launcher"
+          type="button"
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          aria-haspopup="dialog"
+          @click="openShortcutDialog"
+        >
+          <Keyboard :size="20" :stroke-width="1.7" aria-hidden="true" />
+          <span>Shortcuts</span>
+        </button>
       </nav>
 
-      <aside class="editor-v2__elements-panel" :aria-label="panelTitle + ' panel'">
+      <aside
+        class="editor-v2__elements-panel"
+        :class="{ 'editor-v2__sidebar--drop-active': mediaDropTarget === 'library' }"
+        :aria-label="panelTitle + ' panel'"
+        data-media-drop-zone="library"
+        @dragenter="handleMediaDragOver($event, 'library')"
+        @dragover="handleMediaDragOver($event, 'library')"
+        @dragleave="handleMediaDragLeave($event, 'library')"
+        @drop="handleMediaDrop"
+      >
+        <div v-if="mediaDropTarget === 'library'" class="editor-v2__sidebar-drop-overlay">
+          <Upload :size="28" :stroke-width="1.6" aria-hidden="true" />
+          <strong>Drop images into Your Media</strong>
+          <span>They will not be placed on the card yet.</span>
+        </div>
         <div class="editor-v2__panel-title">
           <h1>{{ panelTitle }}</h1>
           <span>{{ activePage.name }}</span>
@@ -1861,13 +2254,13 @@ onBeforeUnmount(() => {
               <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
             </div>
             <div class="editor-v2__recent-row">
-              <button type="button" aria-label="Add rectangle" title="Rectangle" @click="addShapePreset('rectangle')">
+              <button type="button" draggable="true" aria-label="Add rectangle" title="Rectangle" @dragstart="startLibraryDrag({ kind: 'shape', preset: 'rectangle' }, $event)" @dragend="finishLibraryDrag" @click="addShapePreset('rectangle')">
                 <Square :size="23" :stroke-width="1.5" aria-hidden="true" />
               </button>
-              <button type="button" aria-label="Add ellipse" title="Ellipse" @click="addShapePreset('ellipse')">
+              <button type="button" draggable="true" aria-label="Add ellipse" title="Ellipse" @dragstart="startLibraryDrag({ kind: 'shape', preset: 'ellipse' }, $event)" @dragend="finishLibraryDrag" @click="addShapePreset('ellipse')">
                 <Circle :size="23" :stroke-width="1.5" aria-hidden="true" />
               </button>
-              <button type="button" aria-label="Add text" title="Text" @click="addTextPreset('body')">
+              <button type="button" draggable="true" aria-label="Add text" title="Text" @dragstart="startLibraryDrag({ kind: 'text', preset: 'body' }, $event)" @dragend="finishLibraryDrag" @click="addTextPreset('body')">
                 <Type :size="23" :stroke-width="1.5" aria-hidden="true" />
               </button>
             </div>
@@ -1883,6 +2276,9 @@ onBeforeUnmount(() => {
                 v-for="shape in shapeItems"
                 :key="shape.id"
                 type="button"
+                draggable="true"
+                @dragstart="startLibraryDrag({ kind: 'shape', preset: shape.preset }, $event)"
+                @dragend="finishLibraryDrag"
                 @click="addShapePreset(shape.preset)"
               >
                 <component :is="shape.icon" :size="29" :stroke-width="1.5" aria-hidden="true" />
@@ -1901,7 +2297,10 @@ onBeforeUnmount(() => {
                 v-for="frame in frameItems"
                 :key="frame.id"
                 type="button"
+                draggable="true"
                 :aria-label="'Add ' + frame.label"
+                @dragstart="startLibraryDrag({ kind: 'frame', preset: frame.preset }, $event)"
+                @dragend="finishLibraryDrag"
                 @click="addFramePreset(frame.preset)"
               >
                 <component :is="frame.icon" :size="29" :stroke-width="1.5" aria-hidden="true" />
@@ -1928,7 +2327,7 @@ onBeforeUnmount(() => {
               <span>Add text</span>
               <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
             </div>
-            <button class="editor-v2__primary-panel-action" type="button" @click="addTextPreset('body')">
+            <button class="editor-v2__primary-panel-action" type="button" draggable="true" @dragstart="startLibraryDrag({ kind: 'text', preset: 'body' }, $event)" @dragend="finishLibraryDrag" @click="addTextPreset('body')">
               <Type :size="17" :stroke-width="1.8" aria-hidden="true" />
               <span>Add a text box</span>
             </button>
@@ -1937,7 +2336,10 @@ onBeforeUnmount(() => {
                 v-for="preset in textPresetOptions"
                 :key="preset.id"
                 type="button"
+                draggable="true"
                 :class="'preset-' + preset.id"
+                @dragstart="startLibraryDrag({ kind: 'text', preset: preset.id }, $event)"
+                @dragend="finishLibraryDrag"
                 @click="addTextPreset(preset.id)"
               >
                 {{ preset.label }}
@@ -1996,21 +2398,25 @@ onBeforeUnmount(() => {
           <section class="editor-v2__element-section">
             <div class="editor-v2__section-label">
               <span>Your media</span>
-              <span>{{ imageLayers.length }}</span>
+              <span>{{ mediaItems.length }}</span>
             </div>
-            <div v-if="imageLayers.length" class="editor-v2__media-grid">
+            <p v-if="mediaImportError" class="editor-v2__media-error" role="alert">{{ mediaImportError }}</p>
+            <div v-if="mediaItems.length" class="editor-v2__media-grid">
               <button
-                v-for="layer in imageLayers"
-                :key="layer.id"
+                v-for="media in mediaItems"
+                :key="media.id"
                 type="button"
-                :class="{ active: selectedLayerId === layer.id }"
-                :title="layer.name"
-                @click="selectLayer(layer.id)"
+                draggable="true"
+                :title="'Add ' + media.name + ' or drag it onto the card'"
+                :data-media-id="media.id"
+                @dragstart="startLibraryDrag({ kind: 'media', id: media.id }, $event)"
+                @dragend="finishLibraryDrag"
+                @click="addMediaAsset(media)"
               >
-                <img :src="safeImageSource(layer.src)" :alt="layer.name">
+                <img :src="media.src" :alt="media.name" draggable="false">
               </button>
             </div>
-            <div v-else class="editor-v2__panel-empty">No uploaded images on this side.</div>
+            <div v-else class="editor-v2__panel-empty">Drop images here or use Upload images.</div>
           </section>
         </template>
 
@@ -2076,11 +2482,14 @@ onBeforeUnmount(() => {
         <button
           class="editor-v2__stock-preview"
           type="button"
+          draggable="true"
           :aria-label="'Add ' + asset.title"
           :title="'Add ' + asset.title"
+          @dragstart="startLibraryDrag({ kind: 'stock', id: asset.id }, $event)"
+          @dragend="finishLibraryDrag"
           @click="addStockAsset(asset)"
         >
-          <img :src="asset.previewUrl" :alt="asset.title" crossorigin="anonymous" loading="lazy">
+          <img :src="asset.previewUrl" :alt="asset.title" crossorigin="anonymous" loading="lazy" draggable="false">
           <span
             class="editor-v2__stock-favorite"
             :class="{ active: stockFavorites.includes(asset.id) }"
@@ -2159,11 +2568,14 @@ onBeforeUnmount(() => {
                 <button
                   class="editor-v2__icon-preview"
                   type="button"
+                  draggable="true"
                   :aria-label="'Add ' + icon.label + ' icon'"
                   :title="'Add ' + icon.label"
+                  @dragstart="startLibraryDrag({ kind: 'icon', id: icon.id }, $event)"
+                  @dragend="finishLibraryDrag"
                   @click="addLocalIcon(icon)"
                 >
-                  <img :src="localIconAsset(icon)" :alt="icon.label" loading="lazy">
+                  <img :src="localIconAsset(icon)" :alt="icon.label" loading="lazy" draggable="false">
                 </button>
                 <div class="editor-v2__icon-meta">
                   <strong>{{ icon.label }}</strong>
@@ -2252,7 +2664,20 @@ onBeforeUnmount(() => {
             </div>
             <span class="editor-v2__card-size">{{ document.card.widthMm }} x {{ document.card.heightMm }} mm</span>
           </div>
-          <div ref="canvasFrame" class="editor-v2__canvas-frame">
+          <div
+            ref="canvasFrame"
+            class="editor-v2__canvas-frame"
+            :class="{ 'editor-v2__canvas-frame--drop-active': canvasDropActive }"
+            @dragenter="handleCanvasDragOver"
+            @dragover="handleCanvasDragOver"
+            @dragleave="handleCanvasDragLeave"
+            @drop="handleCanvasDrop"
+          >
+            <div v-if="canvasDropActive" class="editor-v2__canvas-drop-overlay" data-canvas-drop-overlay>
+              <Upload :size="30" :stroke-width="1.6" aria-hidden="true" />
+              <strong>Drop to place on the card</strong>
+              <span>Images are also added to Your Media.</span>
+            </div>
             <EditorCanvasV2
               :document="document"
               :page="activePage"
@@ -2331,7 +2756,21 @@ onBeforeUnmount(() => {
         </div>
       </main>
 
-      <aside class="editor-v2__inspector" :aria-label="inspectorTitle + ' inspector'">
+      <aside
+        class="editor-v2__inspector"
+        :class="{ 'editor-v2__sidebar--drop-active': mediaDropTarget === 'inspector' }"
+        :aria-label="inspectorTitle + ' inspector'"
+        data-media-drop-zone="inspector"
+        @dragenter="handleMediaDragOver($event, 'inspector')"
+        @dragover="handleMediaDragOver($event, 'inspector')"
+        @dragleave="handleMediaDragLeave($event, 'inspector')"
+        @drop="handleMediaDrop"
+      >
+        <div v-if="mediaDropTarget === 'inspector'" class="editor-v2__sidebar-drop-overlay">
+          <Upload :size="28" :stroke-width="1.6" aria-hidden="true" />
+          <strong>Drop images into Your Media</strong>
+          <span>They will not be placed on the card yet.</span>
+        </div>
         <div class="editor-v2__inspector-title">
           <div>
             <span>{{ selectedLayer?.type.toUpperCase() ?? "CARD" }}</span>
@@ -2924,6 +3363,53 @@ onBeforeUnmount(() => {
         </div>
       </aside>
     </div>
+
+    <div
+      v-if="shortcutsOpen"
+      class="editor-v2__shortcut-backdrop"
+      role="presentation"
+      @pointerdown.self="closeShortcutDialog"
+    >
+      <section
+        class="editor-v2__shortcut-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="editor-shortcuts-title"
+        data-shortcut-dialog
+      >
+        <header>
+          <h2 id="editor-shortcuts-title">Keyboard shortcuts</h2>
+          <button type="button" aria-label="Close keyboard shortcuts" title="Close" @click="closeShortcutDialog">
+            <X :size="18" :stroke-width="1.8" aria-hidden="true" />
+          </button>
+        </header>
+        <label class="editor-v2__shortcut-search">
+          <Search :size="16" :stroke-width="1.7" aria-hidden="true" />
+          <input
+            ref="shortcutSearchInput"
+            v-model="shortcutQuery"
+            type="search"
+            placeholder="Search shortcuts"
+            aria-label="Search keyboard shortcuts"
+          >
+        </label>
+        <div class="editor-v2__shortcut-results">
+          <section v-for="group in filteredShortcutGroups" :key="group.label">
+            <h3>{{ group.label }}</h3>
+            <dl>
+              <div v-for="item in group.items" :key="item.label">
+                <dt>{{ item.label }}</dt>
+                <dd>
+                  <kbd v-for="keyName in item.keys" :key="keyName">{{ keyName }}</kbd>
+                </dd>
+              </div>
+            </dl>
+          </section>
+          <p v-if="!filteredShortcutGroups.length" class="editor-v2__shortcut-empty">No shortcuts found.</p>
+        </div>
+        <footer>Press ? anywhere in the editor to open this reference.</footer>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -3213,9 +3699,64 @@ a {
   font-weight: 700;
 }
 
+.editor-v2__rail .editor-v2__shortcut-launcher {
+  margin-top: auto;
+  border-top: 1px solid var(--sidebar-line);
+  border-radius: 0 0 6px 6px;
+}
+
 .editor-v2__elements-panel {
+  position: relative;
   border-right: 1px solid var(--sidebar-line);
   padding: 20px 16px 90px;
+}
+
+.editor-v2__inspector {
+  position: relative;
+}
+
+.editor-v2__elements-panel [draggable="true"] {
+  cursor: grab;
+}
+
+.editor-v2__elements-panel [draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.editor-v2__sidebar--drop-active {
+  outline: 2px solid #f05aa8;
+  outline-offset: -2px;
+}
+
+.editor-v2__sidebar-drop-overlay {
+  position: absolute;
+  inset: 8px;
+  z-index: 30;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  border: 2px dashed #f16bb2;
+  border-radius: 6px;
+  background: rgb(24 25 31 / 94%);
+  color: #fff;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.editor-v2__sidebar-drop-overlay span {
+  max-width: 230px;
+  color: #b8bac5;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.editor-v2__media-error {
+  margin: 0 0 10px;
+  color: #ff9bad;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .editor-v2__panel-title,
@@ -4148,8 +4689,34 @@ a {
 }
 
 .editor-v2__canvas-frame {
+  position: relative;
   display: grid;
   place-items: center;
+}
+
+.editor-v2__canvas-frame--drop-active {
+  outline: 3px solid #f05aa8;
+  outline-offset: 8px;
+}
+
+.editor-v2__canvas-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  border: 2px dashed #f05aa8;
+  background: rgb(255 255 255 / 88%);
+  color: #272830;
+  text-align: center;
+  pointer-events: none;
+}
+
+.editor-v2__canvas-drop-overlay span {
+  color: #686a75;
+  font-size: 11px;
 }
 
 .editor-v2__guide-toggle {
@@ -5202,6 +5769,171 @@ a {
   white-space: nowrap;
 }
 
+.editor-v2__shortcut-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgb(10 10 12 / 68%);
+  padding: 20px;
+}
+
+.editor-v2__shortcut-dialog {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100svh - 40px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #4b4c52;
+  border-radius: 8px;
+  background: #2d2e30;
+  color: #f7f7f8;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 42%);
+}
+
+.editor-v2__shortcut-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 18px 12px;
+}
+
+.editor-v2__shortcut-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.editor-v2__shortcut-dialog > header button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #f3f3f4;
+  cursor: pointer;
+}
+
+.editor-v2__shortcut-dialog > header button:hover {
+  background: #404145;
+}
+
+.editor-v2__shortcut-search {
+  margin: 0 18px 14px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #5b5c62;
+  border-radius: 7px;
+  color: #adafb7;
+  padding: 0 12px;
+}
+
+.editor-v2__shortcut-search:focus-within {
+  border-color: #f05aa8;
+}
+
+.editor-v2__shortcut-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.editor-v2__shortcut-search input::placeholder {
+  color: #8d8e95;
+}
+
+.editor-v2__shortcut-results {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 18px 16px;
+  scrollbar-color: #73747b transparent;
+  scrollbar-width: thin;
+}
+
+.editor-v2__shortcut-results > section + section {
+  margin-top: 20px;
+}
+
+.editor-v2__shortcut-results h3 {
+  margin: 0 0 8px;
+  color: #aeb0b7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.editor-v2__shortcut-results dl {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #45464b;
+  border-radius: 7px;
+}
+
+.editor-v2__shortcut-results dl > div {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+}
+
+.editor-v2__shortcut-results dl > div + div {
+  border-top: 1px solid #45464b;
+}
+
+.editor-v2__shortcut-results dt {
+  color: #f0f0f2;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.editor-v2__shortcut-results dd {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  margin: 0;
+}
+
+.editor-v2__shortcut-results kbd {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #5b5c61;
+  border-radius: 5px;
+  background: #45464a;
+  color: #f4f4f5;
+  padding: 2px 7px;
+  font-family: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.editor-v2__shortcut-empty {
+  margin: 28px 0;
+  color: #b9bbc2;
+  text-align: center;
+}
+
+.editor-v2__shortcut-dialog > footer {
+  border-top: 1px solid #45464b;
+  color: #aeb0b7;
+  padding: 12px 18px;
+  font-size: 10px;
+}
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -5293,6 +6025,14 @@ textarea:focus-visible {
     min-height: 52px;
   }
 
+  .editor-v2__rail .editor-v2__shortcut-launcher {
+    margin-top: 0;
+    margin-left: auto;
+    border-top: 0;
+    border-left: 1px solid var(--sidebar-line);
+    border-radius: 0 6px 6px 0;
+  }
+
   .editor-v2__elements-panel,
   .editor-v2__inspector {
     max-height: none;
@@ -5329,6 +6069,26 @@ textarea:focus-visible {
   }
 }
 
+@media (max-width: 600px) {
+  .editor-v2__shortcut-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .editor-v2__shortcut-dialog {
+    max-height: calc(100svh - 20px);
+  }
+
+  .editor-v2__shortcut-results dl > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .editor-v2__shortcut-results dd {
+    justify-content: flex-start;
+  }
+}
 @media (max-width: 520px) {
   .editor-v2__header {
     gap: 7px;
