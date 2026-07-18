@@ -17,6 +17,8 @@ export type EditorLayerV2 = {
   locked: boolean;
   content?: string;
   src?: string;
+  iconSource?: "tabler" | "lucide" | "emoji";
+  iconId?: string;
   assetId?: number;
   storageKey?: string;
   originalSrc?: string;

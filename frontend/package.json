@@ -10,6 +10,8 @@
     "test:xss": "node tests/xssStaticGuard.test.mjs"
   },
   "dependencies": {
+    "@iconify-json/lucide": "^1.2.118",
+    "@iconify-json/tabler": "^1.2.36",
     "@lucide/vue": "^1.23.0",
     "@vitejs/plugin-vue": "6.0.7",
     "jspdf": "^4.2.1",

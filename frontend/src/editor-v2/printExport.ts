@@ -286,7 +286,7 @@ function wrapText(context: CanvasRenderingContext2D, value: string, maxWidth: nu
 function safeImageSource(value: string | undefined): string {
   if (!value) return "";
   if (/^https?:\/\//i.test(value) || value.startsWith("/")) return value;
-  return /^data:image\/(png|jpeg|webp|gif);base64,/i.test(value) ? value : "";
+  return /^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,/i.test(value) ? value : "";
 }
 
 function safeFilePart(value: string): string {

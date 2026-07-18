@@ -106,7 +106,7 @@ const bleedGuideStyle = computed<CSSProperties>(() => ({
 }));
 
 function safeImageSource(src: string | undefined): string {
-  return src && (/^https?:\/\//.test(src) || src.startsWith("/") || /^data:image\/(png|jpeg|webp|gif);base64,/.test(src)) ? src : "";
+  return src && (/^https?:\/\//.test(src) || src.startsWith("/") || /^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,/.test(src)) ? src : "";
 }
 
 function layerStyle(layer: EditorLayerV2): CSSProperties {

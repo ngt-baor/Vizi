@@ -69,9 +69,9 @@ import {
   getDesign,
   preflightDesign,
   removeBackgroundImageAsset,
-  searchIcons8,
+
   searchStock,
-  type Icons8Icon,
+
   type PreflightIssue,
   type StockApiAsset,
   type PreflightReport,
@@ -98,11 +98,12 @@ import {
 import { extractImagePalette } from "../editor-v2/imagePalette";
 import { localFonts } from "../generated/localFonts";
 import { stockAssets, type StockAsset, type StockKind } from "../editor-v2/stockAssets";
+import { localIconAsset, localIconCounts, searchLocalIcons, type LocalIcon, type LocalIconSource } from "../editor-v2/localIcons";
 
 type EditorTool = "select" | "text" | "rect" | "ellipse" | "image";
 type EditorLayerAction = "duplicate" | "toggle-lock" | "bring-forward" | "send-backward" | "delete";
-type SidebarPanel = "elements" | "text" | "uploads" | "stock" | "icons8" | "layers";
-type Icons8Platform = "" | "material" | "fluency" | "color" | "ios7" | "windows";
+type SidebarPanel = "elements" | "text" | "uploads" | "stock" | "icon" | "layers";
+type LocalIconFilter = LocalIconSource | "all";
 type StockView = "browse" | "favorites" | "recent";
 type StockKindFilter = "all" | StockKind;
 type TextPreset = "title" | "subtitle" | "body";
@@ -165,13 +166,9 @@ const backgroundRemovingLayerId = ref<string | null>(null);
 const backgroundRemovalError = ref("");
 const paletteExtractingLayerId = ref<string | null>(null);
 const paletteExtractionError = ref("");
-const icons8Query = ref("");
-const icons8Platform = ref<Icons8Platform>("material");
-const icons8Results = ref<Icons8Icon[]>([]);
-const icons8Loading = ref(false);
-const icons8Error = ref("");
-const icons8Message = ref("");
-let icons8RequestId = 0;
+const iconQuery = ref("");
+const iconSource = ref<LocalIconFilter>("all");
+const localIconResults = computed(() => searchLocalIcons(iconQuery.value, iconSource.value, 60));
 const stockQuery = ref("");
 const stockView = ref<StockView>("browse");
 const stockKindFilter = ref<StockKindFilter>("all");
@@ -338,7 +335,7 @@ const panelTitle = computed(() => ({
   text: "Text",
   uploads: "Uploads",
   stock: "Stock",
-  icons8: "Icons8",
+  icon: "Icon",
   layers: "Layers",
 }[activePanel.value]));
 
@@ -347,17 +344,15 @@ const sidebarItems: Array<{ id: SidebarPanel; label: string; icon: Component }> 
   { id: "text", label: "Text", icon: Type },
   { id: "uploads", label: "Uploads", icon: Upload },
   { id: "stock", label: "Stock", icon: ImageIcon },
-  { id: "icons8", label: "Icons8", icon: Grid2x2 },
+  { id: "icon", label: "Icon", icon: Grid2x2 },
   { id: "layers", label: "Layers", icon: Layers3 },
 ];
 
-const icons8PlatformOptions: Array<{ value: Icons8Platform; label: string }> = [
-  { value: "material", label: "Material" },
-  { value: "fluency", label: "Fluency" },
-  { value: "color", label: "Color" },
-  { value: "ios7", label: "iOS 7" },
-  { value: "windows", label: "Windows" },
-  { value: "", label: "All styles" },
+const localIconSourceOptions: Array<{ value: LocalIconFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "tabler", label: "Tabler" },
+  { value: "lucide", label: "Lucide" },
+  { value: "emoji", label: "Emoji" },
 ];
 
 const stockKindOptions: Array<{ value: StockKindFilter; label: string }> = [
@@ -534,7 +529,7 @@ function backendAssetUrl(url: string): string {
 function safeImageSource(value: string | undefined): string {
   if (!value) return "";
   if (/^https?:\/\//i.test(value) || value.startsWith("/")) return value;
-  return /^data:image\/(png|jpeg|webp|gif);base64,/i.test(value) ? value : "";
+  return /^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,/i.test(value) ? value : "";
 }
 
 function readImagePixelSize(source: string): Promise<{ pixelWidth?: number; pixelHeight?: number }> {
@@ -915,50 +910,18 @@ async function addStockAsset(asset: StockAsset): Promise<void> {
   activePanel.value = "stock";
 }
 
-async function searchIcons8Assets(): Promise<void> {
-  const term = icons8Query.value.trim();
-  icons8Error.value = "";
-  icons8Message.value = "";
-  if (!term) {
-    icons8Results.value = [];
-    icons8Error.value = "Enter an icon name to search.";
-    return;
-  }
-
-  const requestId = ++icons8RequestId;
-  icons8Loading.value = true;
-  try {
-    const response = await searchIcons8(term, "en", icons8Platform.value, 24);
-    if (requestId !== icons8RequestId) return;
-    icons8Results.value = response.icons;
-    icons8Message.value = response.message || "";
-    if (!response.configured) {
-      icons8Error.value = response.message || "Icons8 is not configured on the backend.";
-    }
-  } catch (error) {
-    if (requestId !== icons8RequestId) return;
-    icons8Results.value = [];
-    icons8Error.value = error instanceof Error ? error.message : "Icons8 search failed.";
-  } finally {
-    if (requestId === icons8RequestId) icons8Loading.value = false;
-  }
-}
-
-async function addIcons8Asset(icon: Icons8Icon): Promise<void> {
-  const source = safeImageSource(icon.previewUrl);
-  if (!source) {
-    icons8Error.value = "This Icons8 preview is unavailable.";
-    return;
-  }
-  icons8Error.value = "";
+async function addLocalIcon(icon: LocalIcon): Promise<void> {
+  const source = localIconAsset(icon);
   const pixelSize = await readImagePixelSize(source);
   addLayer("image", source, {
-    name: "Icons8 - " + icon.name,
+    name: icon.label,
+    iconSource: icon.source,
+    iconId: icon.id,
     width: 28,
     height: 28,
     ...pixelSize,
   });
-  activePanel.value = "icons8";
+  activePanel.value = "icon";
 }
 
 async function removeBackgroundFromSelected(): Promise<void> {
@@ -2148,68 +2111,70 @@ onBeforeUnmount(() => {
     {{ stockView === 'favorites' ? 'No favorites yet.' : stockView === 'recent' ? 'No recent stock assets.' : 'No stock assets match these filters.' }}
   </div>
 </template>
-<template v-else-if="activePanel === 'icons8'">
+<template v-else-if="activePanel === 'icon'">
           <section class="editor-v2__element-section">
             <div class="editor-v2__section-label">
-              <span>Icons8 library</span>
-              <ChevronDown :size="14" :stroke-width="1.8" aria-hidden="true" />
+              <span>Icon library</span>
+              <span>{{ localIconCounts.all }}</span>
             </div>
-            <form class="editor-v2__icons8-search" @submit.prevent="searchIcons8Assets">
+            <form class="editor-v2__icon-search" @submit.prevent>
               <input
-                v-model="icons8Query"
+                v-model="iconQuery"
                 type="search"
-                aria-label="Search Icons8 icons"
+                aria-label="Search local icons"
                 placeholder="Search icons"
                 maxlength="80"
               >
-              <select v-model="icons8Platform" aria-label="Icons8 style">
-                <option v-for="option in icons8PlatformOptions" :key="option.value || 'all'" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-              <button type="submit" :disabled="icons8Loading">
-                {{ icons8Loading ? "Searching..." : "Search" }}
-              </button>
             </form>
-            <a
-              class="editor-v2__icons8-credit"
-              href="https://icons8.com"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Icons by Icons8
-            </a>
-            <span v-if="icons8Error" class="editor-v2__icons8-status editor-v2__icons8-status--error">{{ icons8Error }}</span>
-            <span v-else-if="icons8Message" class="editor-v2__icons8-status">{{ icons8Message }}</span>
+            <div class="editor-v2__icon-sources" role="tablist" aria-label="Icon sources">
+              <button
+                v-for="option in localIconSourceOptions"
+                :key="option.value"
+                type="button"
+                role="tab"
+                :aria-selected="iconSource === option.value"
+                :class="{ active: iconSource === option.value }"
+                @click="iconSource = option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+            <span class="editor-v2__icon-status">{{ localIconCounts[iconSource] }} local icons</span>
           </section>
 
-          <section v-if="icons8Results.length" class="editor-v2__element-section">
+          <section v-if="localIconResults.length" class="editor-v2__element-section">
             <div class="editor-v2__section-label">
               <span>Results</span>
-              <span>{{ icons8Results.length }}</span>
+              <span>{{ localIconResults.length }}</span>
             </div>
-            <div class="editor-v2__icons8-grid">
-              <article v-for="icon in icons8Results" :key="icon.id + '-' + icon.platform" class="editor-v2__icons8-card">
+            <div class="editor-v2__icon-grid">
+              <article
+                v-for="icon in localIconResults"
+                :key="icon.id"
+                class="editor-v2__icon-card"
+                data-local-icon-card
+                :data-icon-source="icon.source"
+                :data-icon-id="icon.id"
+              >
                 <button
-                  class="editor-v2__icons8-preview"
+                  class="editor-v2__icon-preview"
                   type="button"
-                  :aria-label="'Add ' + icon.name + ' icon'"
-                  :title="'Add ' + icon.name"
-                  @click="addIcons8Asset(icon)"
+                  :aria-label="'Add ' + icon.label + ' icon'"
+                  :title="'Add ' + icon.label"
+                  @click="addLocalIcon(icon)"
                 >
-                  <img :src="icon.previewUrl" :alt="icon.name" loading="lazy">
+                  <img :src="localIconAsset(icon)" :alt="icon.label" loading="lazy">
                 </button>
-                <div class="editor-v2__icons8-meta">
-                  <strong>{{ icon.name }}</strong>
-                  <span>{{ icon.platform || 'Icons8' }}</span>
+                <div class="editor-v2__icon-meta">
+                  <strong>{{ icon.label }}</strong>
+                  <span>{{ icon.source }}</span>
                 </div>
-                <button class="editor-v2__icons8-add" type="button" @click="addIcons8Asset(icon)">Add</button>
+                <button class="editor-v2__icon-add" type="button" @click="addLocalIcon(icon)">Add</button>
               </article>
             </div>
           </section>
-          <div v-else-if="!icons8Loading" class="editor-v2__panel-empty">Search for an icon to add it to the card.</div>
+          <div v-else class="editor-v2__panel-empty">No local icons found.</div>
         </template>
-
         <template v-else-if="activePanel === 'layers'">
           <section class="editor-v2__layers-panel">
             <div class="editor-v2__section-label">
@@ -3780,14 +3745,14 @@ a {
   opacity: 0.55;
 }
 
-.editor-v2__icons8-search {
+.editor-v2__icon-search {
   display: grid;
   gap: 8px;
 }
 
-.editor-v2__icons8-search input,
-.editor-v2__icons8-search select,
-.editor-v2__icons8-search button {
+.editor-v2__icon-search input,
+.editor-v2__icon-search select,
+.editor-v2__icon-search button {
   width: 100%;
   min-height: 34px;
   border: 1px solid var(--sidebar-line);
@@ -3797,31 +3762,54 @@ a {
   font-size: 11px;
 }
 
-.editor-v2__icons8-search input,
-.editor-v2__icons8-search select {
+.editor-v2__icon-search input,
+.editor-v2__icon-search select {
   padding: 0 9px;
 }
 
-.editor-v2__icons8-search button,
-.editor-v2__icons8-add {
+.editor-v2__icon-search button,
+.editor-v2__icon-add {
   background: #351424;
   color: #ff8fc7;
   cursor: pointer;
   font-weight: 700;
 }
 
-.editor-v2__icons8-search button:hover:not(:disabled),
-.editor-v2__icons8-add:hover {
+.editor-v2__icon-search button:hover:not(:disabled),
+.editor-v2__icon-add:hover {
   border-color: #f36db4;
   background: #4a1b38;
 }
 
-.editor-v2__icons8-search button:disabled {
+.editor-v2__icon-search button:disabled {
   cursor: wait;
   opacity: 0.55;
 }
 
-.editor-v2__icons8-credit {
+.editor-v2__icon-sources {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.editor-v2__icon-sources button {
+  min-height: 28px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 4px;
+  background: #15161b;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.editor-v2__icon-sources button.active {
+  border-color: #f36db4;
+  background: #351424;
+  color: #ff8fc7;
+}
+.editor-v2__icon-credit {
   display: inline-block;
   margin-top: 9px;
   color: #f36db4;
@@ -3829,11 +3817,11 @@ a {
   text-decoration: none;
 }
 
-.editor-v2__icons8-credit:hover {
+.editor-v2__icon-credit:hover {
   text-decoration: underline;
 }
 
-.editor-v2__icons8-status {
+.editor-v2__icon-status {
   display: block;
   margin-top: 8px;
   color: var(--sidebar-muted);
@@ -3841,17 +3829,17 @@ a {
   line-height: 1.45;
 }
 
-.editor-v2__icons8-status--error {
+.editor-v2__icon-status--error {
   color: #ff9aa9;
 }
 
-.editor-v2__icons8-grid {
+.editor-v2__icon-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.editor-v2__icons8-card {
+.editor-v2__icon-card {
   min-width: 0;
   display: grid;
   gap: 7px;
@@ -3861,7 +3849,7 @@ a {
   padding: 7px;
 }
 
-.editor-v2__icons8-preview {
+.editor-v2__icon-preview {
   width: 100%;
   aspect-ratio: 1;
   display: grid;
@@ -3873,42 +3861,42 @@ a {
   padding: 8px;
 }
 
-.editor-v2__icons8-preview:hover {
+.editor-v2__icon-preview:hover {
   outline: 2px solid #f36db4;
   outline-offset: -2px;
 }
 
-.editor-v2__icons8-preview img {
+.editor-v2__icon-preview img {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: contain;
 }
 
-.editor-v2__icons8-meta {
+.editor-v2__icon-meta {
   min-width: 0;
   display: grid;
   gap: 2px;
 }
 
-.editor-v2__icons8-meta strong,
-.editor-v2__icons8-meta span {
+.editor-v2__icon-meta strong,
+.editor-v2__icon-meta span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.editor-v2__icons8-meta strong {
+.editor-v2__icon-meta strong {
   color: var(--sidebar-text);
   font-size: 10px;
 }
 
-.editor-v2__icons8-meta span {
+.editor-v2__icon-meta span {
   color: var(--sidebar-muted);
   font-size: 9px;
 }
 
-.editor-v2__icons8-add {
+.editor-v2__icon-add {
   min-height: 28px;
   border: 1px solid #673252;
   border-radius: 4px;

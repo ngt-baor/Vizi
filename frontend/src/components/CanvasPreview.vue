@@ -86,7 +86,7 @@ function layerText(layer: CanvasLayer): string {
 
 function layerImageSource(layer: CanvasLayer): string {
   const source = stringValue(layer.src ?? layer.url ?? layer.imageUrl, "");
-  return source.startsWith("http://") || source.startsWith("https://") || source.startsWith("/")
+  return source.startsWith("http://") || source.startsWith("https://") || source.startsWith("/") || /^data:image\/svg\+xml;base64,/i.test(source)
     ? source
     : "";
 }
