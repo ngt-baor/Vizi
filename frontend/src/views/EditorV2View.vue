@@ -43,6 +43,7 @@ import {
   Redo2,
   RectangleHorizontal,
   RotateCw,
+  Ruler,
   Save,
   Search,
   Sparkles,
@@ -59,7 +60,7 @@ import {
   X,
 } from "@lucide/vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { Component } from "vue";
+import type { Component, CSSProperties } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
 import CanvasPreview from "../components/CanvasPreview.vue";
@@ -141,6 +142,19 @@ type CanvasDropPoint = {
   centerY: number;
 };
 
+type CanvasOverlayBounds = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+type RulerTick = {
+  value: number;
+  position: number;
+  major: boolean;
+};
+
 type LibraryDragItem =
   | { kind: "text"; preset: TextPreset }
   | { kind: "shape"; preset: ShapePreset }
@@ -175,6 +189,9 @@ const canvasFrame = ref<HTMLElement | null>(null);
 const zoomControl = ref<HTMLElement | null>(null);
 const zoomMenuOpen = ref(false);
 const showPrintGuides = ref(true);
+const showRulers = ref(true);
+const showGrid = ref(false);
+const canvasOverlayBounds = ref<CanvasOverlayBounds | null>(null);
 const preflightReport = ref<PreflightReport | null>(null);
 const preflightLoading = ref(false);
 const checkoutLoading = ref(false);
@@ -219,6 +236,9 @@ const stockPage = ref(1);
 const stockHasMore = ref(false);
 let stockRequestId = 0;
 let stockSearchTimer: number | null = null;
+let canvasOverlayFrame: number | null = null;
+let canvasOverlayTimer: number | null = null;
+let canvasResizeObserver: ResizeObserver | null = null;
 const fontSearch = ref("");
 const fontResultLimit = ref(40);
 const backendDesignId = computed(() => {
@@ -236,6 +256,14 @@ const statusText = computed(() => {
   if (saveState.value === "dirty") return "Unsaved changes";
   return backendDesignId.value ? "Draft loaded" : "All changes saved";
 });
+
+function draftErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (/failed to fetch|networkerror|load failed/i.test(message)) {
+    return "Backend offline - local changes preserved";
+  }
+  return message || fallback;
+}
 const printExportSpec = computed(() => getPrintExportSpec(document.value));
 const preflightErrorCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "ERROR").length ?? 0);
 const preflightWarningCount = computed(() => preflightReport.value?.issues.filter((issue) => issue.level === "WARNING").length ?? 0);
@@ -247,6 +275,53 @@ const MAX_IMAGE_FILE_BYTES = 5 * 1024 * 1024;
 const MIN_ZOOM = 5;
 const MAX_ZOOM = 800;
 const zoomPresets = [5, 25, 50, 100, 200, 400, 800];
+const RULER_STEP_MM = 5;
+
+function createRulerTicks(lengthMm: number): RulerTick[] {
+  const safeLength = Math.max(1, lengthMm);
+  const ticks: RulerTick[] = [];
+  for (let value = 0; value <= safeLength; value += RULER_STEP_MM) {
+    ticks.push({ value, position: value / safeLength * 100, major: value % 10 === 0 });
+  }
+  const lastValue = ticks[ticks.length - 1]?.value ?? 0;
+  if (Math.abs(lastValue - safeLength) > 0.01) {
+    ticks.push({ value: safeLength, position: 100, major: true });
+  }
+  return ticks;
+}
+
+const horizontalRulerTicks = computed(() => createRulerTicks(document.value.card.widthMm));
+const verticalRulerTicks = computed(() => createRulerTicks(document.value.card.heightMm));
+const topRulerStyle = computed<CSSProperties>(() => {
+  const bounds = canvasOverlayBounds.value;
+  return bounds
+    ? { left: bounds.left + "px", top: bounds.top + "px", width: bounds.width + "px" }
+    : { visibility: "hidden" };
+});
+const leftRulerStyle = computed<CSSProperties>(() => {
+  const bounds = canvasOverlayBounds.value;
+  return bounds
+    ? { left: bounds.left + "px", top: bounds.top + "px", height: bounds.height + "px" }
+    : { visibility: "hidden" };
+});
+const canvasGridStyle = computed<CSSProperties>(() => {
+  const bounds = canvasOverlayBounds.value;
+  const widthMm = Math.max(1, document.value.card.widthMm);
+  const heightMm = Math.max(1, document.value.card.heightMm);
+  const minorX = RULER_STEP_MM / widthMm * 100;
+  const minorY = RULER_STEP_MM / heightMm * 100;
+  const majorX = RULER_STEP_MM * 2 / widthMm * 100;
+  const majorY = RULER_STEP_MM * 2 / heightMm * 100;
+  return bounds
+    ? {
+        left: bounds.left + "px",
+        top: bounds.top + "px",
+        width: bounds.width + "px",
+        height: bounds.height + "px",
+        backgroundSize: minorX + "% 100%, 100% " + minorY + "%, " + majorX + "% 100%, 100% " + majorY + "%",
+      }
+    : { visibility: "hidden" };
+});
 const palettes = ["#15161b", "#ffffff", "#b4367d", "#f4c46d", "#0d766d", "#5b83d4"];
 const systemFontOptions = [
   { label: "Aptos", value: "Aptos, Segoe UI, sans-serif", kind: "Sans-serif" },
@@ -1440,6 +1515,36 @@ function handleZoomMenuKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") zoomMenuOpen.value = false;
 }
 
+function updateCanvasOverlayBounds(): void {
+  const frame = canvasFrame.value;
+  const canvas = frame?.querySelector<HTMLElement>("[data-editor-v2-canvas]");
+  if (!frame || !canvas) {
+    canvasOverlayBounds.value = null;
+    return;
+  }
+  const frameRect = frame.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
+  canvasOverlayBounds.value = {
+    left: canvasRect.left - frameRect.left,
+    top: canvasRect.top - frameRect.top,
+    width: canvasRect.width,
+    height: canvasRect.height,
+  };
+}
+
+function queueCanvasOverlayUpdate(): void {
+  if (canvasOverlayFrame !== null) window.cancelAnimationFrame(canvasOverlayFrame);
+  if (canvasOverlayTimer !== null) window.clearTimeout(canvasOverlayTimer);
+  canvasOverlayFrame = window.requestAnimationFrame(() => {
+    canvasOverlayFrame = null;
+    updateCanvasOverlayBounds();
+  });
+  canvasOverlayTimer = window.setTimeout(() => {
+    canvasOverlayTimer = null;
+    updateCanvasOverlayBounds();
+  }, 190);
+}
+
 function openPreview(): void {
   previewSide.value = activeSide.value;
   previewOpen.value = true;
@@ -1925,7 +2030,7 @@ async function saveDraft(): Promise<void> {
     resetHistory();
     finishSavedState();
   } catch (unknownError) {
-    saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot save draft";
+    saveError.value = draftErrorMessage(unknownError, "Cannot save draft");
     saveState.value = "error";
   }
 }
@@ -2054,7 +2159,7 @@ async function loadInitialDocument(): Promise<void> {
   } catch (unknownError) {
     if (localDocument) document.value = localDocument;
     resetHistory();
-    saveError.value = unknownError instanceof Error ? unknownError.message : "Cannot load draft";
+    saveError.value = draftErrorMessage(unknownError, "Cannot load draft");
     saveState.value = "error";
   } finally {
     selectedLayerId.value = null;
@@ -2085,18 +2190,36 @@ watch(activePanel, (panel) => {
   }
 });
 
+watch(
+  [zoom, panX, panY, () => document.value.card.widthMm, () => document.value.card.heightMm],
+  () => queueCanvasOverlayUpdate(),
+);
+
 onMounted(() => {
   window.addEventListener("pointerdown", handleZoomMenuPointerDown);
   window.addEventListener("keydown", handleZoomMenuKeydown);
   window.addEventListener("keydown", handleEditorKeydown);
+  window.addEventListener("resize", queueCanvasOverlayUpdate);
+  void nextTick(() => {
+    const frame = canvasFrame.value;
+    const canvas = frame?.querySelector<HTMLElement>("[data-editor-v2-canvas]");
+    canvasResizeObserver = new ResizeObserver(queueCanvasOverlayUpdate);
+    if (frame) canvasResizeObserver.observe(frame);
+    if (canvas) canvasResizeObserver.observe(canvas);
+    queueCanvasOverlayUpdate();
+  });
   void loadInitialDocument();
 });
 
 onBeforeUnmount(() => {
   if (stockSearchTimer !== null) window.clearTimeout(stockSearchTimer);
+  if (canvasOverlayFrame !== null) window.cancelAnimationFrame(canvasOverlayFrame);
+  if (canvasOverlayTimer !== null) window.clearTimeout(canvasOverlayTimer);
+  canvasResizeObserver?.disconnect();
   window.removeEventListener("pointerdown", handleZoomMenuPointerDown);
   window.removeEventListener("keydown", handleZoomMenuKeydown);
   window.removeEventListener("keydown", handleEditorKeydown);
+  window.removeEventListener("resize", queueCanvasOverlayUpdate);
 });
 </script>
 
@@ -2146,11 +2269,38 @@ onBeforeUnmount(() => {
         >
           <Redo2 :size="17" :stroke-width="1.8" aria-hidden="true" />
         </button>
-        <span class="editor-v2__status-dot" aria-hidden="true" />
-        <span class="editor-v2__status" role="status" aria-live="polite">{{ statusText }}</span>
+        <span class="editor-v2__header-tool-divider" aria-hidden="true" />
+        <button
+          type="button"
+          aria-label="Toggle rulers"
+          title="Show or hide rulers"
+          :aria-pressed="showRulers"
+          :class="{ active: showRulers }"
+          @click="showRulers = !showRulers"
+        >
+          <Ruler :size="17" :stroke-width="1.8" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          aria-label="Toggle grid"
+          title="Show or hide 5 mm grid"
+          :aria-pressed="showGrid"
+          :class="{ active: showGrid }"
+          @click="showGrid = !showGrid"
+        >
+          <Grid2x2 :size="17" :stroke-width="1.8" aria-hidden="true" />
+        </button>
       </div>
 
       <div class="editor-v2__header-actions">
+        <div class="editor-v2__status-cluster">
+          <span
+            class="editor-v2__status-dot"
+            :class="{ 'editor-v2__status-dot--error': saveState === 'error' || exportState === 'error' }"
+            aria-hidden="true"
+          />
+          <span class="editor-v2__status" role="status" aria-live="polite">{{ statusText }}</span>
+        </div>
         <button class="editor-v2__header-icon editor-v2__preview-icon" type="button" aria-label="Preview card" title="Preview Front and Back" @click="openPreview">
           <Play :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
@@ -2623,13 +2773,6 @@ onBeforeUnmount(() => {
       </aside>
 
       <main class="editor-v2__workspace" aria-label="Card workspace">
-        <div class="editor-v2__ruler editor-v2__ruler--top" aria-hidden="true">
-          <span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500</span><span>600</span><span>700</span>
-        </div>
-        <div class="editor-v2__ruler editor-v2__ruler--left" aria-hidden="true">
-          <span>0</span><span>100</span><span>200</span><span>300</span><span>400</span>
-        </div>
-
         <div class="editor-v2__canvas-tools" role="toolbar" aria-label="Canvas tools">
           <button
             v-for="tool in canvasTools"
@@ -2669,6 +2812,49 @@ onBeforeUnmount(() => {
             @dragleave="handleCanvasDragLeave"
             @drop="handleCanvasDrop"
           >
+            <div
+              v-if="showGrid"
+              class="editor-v2__canvas-grid"
+              :style="canvasGridStyle"
+              data-canvas-grid
+              aria-hidden="true"
+            />
+            <div
+              v-if="showRulers"
+              class="editor-v2__card-ruler editor-v2__card-ruler--top"
+              :style="topRulerStyle"
+              data-editor-ruler="top"
+              aria-hidden="true"
+            >
+              <span
+                v-for="tick in horizontalRulerTicks"
+                :key="'x-' + tick.value"
+                class="editor-v2__ruler-tick"
+                :class="{ major: tick.major }"
+                :style="{ left: tick.position + '%' }"
+              >
+                <i />
+                <b v-if="tick.major">{{ tick.value }}</b>
+              </span>
+            </div>
+            <div
+              v-if="showRulers"
+              class="editor-v2__card-ruler editor-v2__card-ruler--left"
+              :style="leftRulerStyle"
+              data-editor-ruler="left"
+              aria-hidden="true"
+            >
+              <span
+                v-for="tick in verticalRulerTicks"
+                :key="'y-' + tick.value"
+                class="editor-v2__ruler-tick"
+                :class="{ major: tick.major }"
+                :style="{ top: tick.position + '%' }"
+              >
+                <i />
+                <b v-if="tick.major">{{ tick.value }}</b>
+              </span>
+            </div>
             <div v-if="canvasDropActive" class="editor-v2__canvas-drop-overlay" data-canvas-drop-overlay>
               <Upload :size="30" :stroke-width="1.6" aria-hidden="true" />
               <strong>Drop to place on the card</strong>
@@ -3525,9 +3711,9 @@ a {
   z-index: 12;
   height: 54px;
   min-height: 54px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--editor-line);
   background: #ffffff;
@@ -3554,10 +3740,26 @@ a {
   gap: 9px;
 }
 
+.editor-v2__header-left {
+  justify-self: start;
+}
+
 .editor-v2__header-center {
+  justify-self: center;
   gap: 4px;
   color: var(--editor-muted);
   font-size: 11px;
+}
+
+.editor-v2__header-actions {
+  justify-self: end;
+}
+
+.editor-v2__status-cluster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .editor-v2__header-center button,
@@ -3583,8 +3785,17 @@ a {
 }
 
 .editor-v2__header-center button:hover:not(:disabled),
+.editor-v2__header-center button.active,
 .editor-v2__header-icon:hover {
-  background: var(--editor-soft);
+  background: var(--editor-accent-soft);
+  color: var(--editor-accent);
+}
+
+.editor-v2__header-tool-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--editor-line);
+  margin: 0 3px;
 }
 
 .editor-v2__header-center button:disabled {
@@ -3652,10 +3863,15 @@ a {
 }
 
 .editor-v2__status-dot {
+  flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #4baf86;
+}
+
+.editor-v2__status-dot--error {
+  background: #df7b32;
 }
 
 .editor-v2__preflight,
@@ -4633,40 +4849,6 @@ a {
   background: var(--editor-workspace);
 }
 
-.editor-v2__ruler {
-  position: absolute;
-  z-index: 1;
-  color: #92939b;
-  font-size: 9px;
-  pointer-events: none;
-}
-
-.editor-v2__ruler--top {
-  top: 0;
-  left: 52px;
-  right: 0;
-  height: 28px;
-  display: flex;
-  justify-content: space-around;
-  align-items: end;
-  border-bottom: 1px solid #d5d5d9;
-  background: rgba(232, 232, 235, 0.95);
-  padding: 0 30px 5px;
-}
-
-.editor-v2__ruler--left {
-  top: 28px;
-  bottom: 86px;
-  left: 0;
-  width: 46px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-around;
-  align-items: end;
-  border-right: 1px solid #d5d5d9;
-  padding: 14px 8px 14px 0;
-}
-
 .editor-v2__canvas-tools {
   position: absolute;
   z-index: 5;
@@ -4752,6 +4934,105 @@ a {
   position: relative;
   display: grid;
   place-items: center;
+}
+
+.editor-v2__canvas-grid {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  background-image:
+    linear-gradient(to right, rgb(49 117 213 / 14%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(49 117 213 / 14%) 1px, transparent 1px),
+    linear-gradient(to right, rgb(49 117 213 / 25%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(49 117 213 / 25%) 1px, transparent 1px);
+  background-position: -0.5px 0, 0 -0.5px, -0.5px 0, 0 -0.5px;
+  pointer-events: none;
+}
+
+.editor-v2__card-ruler {
+  position: absolute;
+  z-index: 8;
+  box-sizing: border-box;
+  border: 1px solid #c9cad0;
+  background: rgb(247 247 249 / 97%);
+  color: #737680;
+  font-size: 8px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.editor-v2__card-ruler--top {
+  height: 22px;
+  border-bottom-color: #afb1b9;
+  transform: translateY(-100%);
+}
+
+.editor-v2__card-ruler--left {
+  width: 22px;
+  border-right-color: #afb1b9;
+  transform: translateX(-100%);
+}
+
+.editor-v2__ruler-tick {
+  position: absolute;
+  display: block;
+}
+
+.editor-v2__ruler-tick i,
+.editor-v2__ruler-tick b {
+  position: absolute;
+  display: block;
+}
+
+.editor-v2__ruler-tick b {
+  font: inherit;
+  font-weight: 600;
+}
+
+.editor-v2__card-ruler--top .editor-v2__ruler-tick {
+  top: 0;
+  bottom: 0;
+}
+
+.editor-v2__card-ruler--top .editor-v2__ruler-tick i {
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 5px;
+  background: currentColor;
+}
+
+.editor-v2__card-ruler--top .editor-v2__ruler-tick.major i {
+  height: 8px;
+}
+
+.editor-v2__card-ruler--top .editor-v2__ruler-tick b {
+  top: 3px;
+  left: 0;
+  transform: translateX(-50%);
+}
+
+.editor-v2__card-ruler--left .editor-v2__ruler-tick {
+  right: 0;
+  left: 0;
+}
+
+.editor-v2__card-ruler--left .editor-v2__ruler-tick i {
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 1px;
+  background: currentColor;
+}
+
+.editor-v2__card-ruler--left .editor-v2__ruler-tick.major i {
+  width: 8px;
+}
+
+.editor-v2__card-ruler--left .editor-v2__ruler-tick b {
+  top: 0;
+  right: 10px;
+  transform: translateY(-50%) rotate(-90deg);
 }
 
 .editor-v2__canvas-frame--drop-active {
@@ -6195,12 +6476,13 @@ textarea:focus-visible {
     height: 76px;
   }
 
-  .editor-v2__ruler--left {
-    bottom: 76px;
-  }
 }
 
 @media (max-width: 1280px) {
+  .editor-v2__status-cluster {
+    display: none;
+  }
+
   .editor-v2__layout {
     grid-template-columns: 60px 236px minmax(0, 1fr) 286px;
   }
@@ -6300,9 +6582,6 @@ textarea:focus-visible {
     width: min(78vw, 680px);
   }
 
-  .editor-v2__ruler--left {
-    bottom: 86px;
-  }
 }
 
 @media (max-width: 600px) {
@@ -6411,12 +6690,8 @@ textarea:focus-visible {
     padding-inline: 36px 16px;
   }
 
-  .editor-v2__ruler--top {
-    left: 38px;
-  }
-
-  .editor-v2__ruler--left {
-    width: 32px;
+  .editor-v2__card-ruler {
+    display: none;
   }
 
   .editor-v2__canvas-tools {
