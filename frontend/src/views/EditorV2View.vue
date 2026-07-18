@@ -4857,17 +4857,17 @@ a {
   width: 34px;
   display: grid;
   justify-items: center;
-  gap: 3px;
+  gap: 2px;
   border: 1px solid #d4d4d9;
   border-radius: 6px;
   background: #ffffff;
   box-shadow: 0 8px 20px rgba(39, 40, 48, 0.14);
-  padding: 4px;
+  padding: 4px 2px;
 }
 
 .editor-v2__canvas-tools button {
   width: 28px;
-  height: 30px;
+  height: 28px;
   display: grid;
   place-items: center;
   border: 0;
