@@ -6,7 +6,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  Bell,
   Bold,
   ChevronDown,
   Circle,
@@ -29,9 +28,7 @@ import {
   Layers3,
   Link2,
   LockKeyhole,
-  Menu,
   Minus,
-  Monitor,
   Move,
   MousePointer2,
   Octagon,
@@ -50,7 +47,6 @@ import {
   Search,
   Sparkles,
   Shapes,
-  Share2,
   ShoppingCart,
   ShieldCheck,
   Square,
@@ -66,6 +62,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import type { Component } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import EditorCanvasV2 from "../editor-v2/EditorCanvasV2.vue";
+import CanvasPreview from "../components/CanvasPreview.vue";
 import {
   apiBaseUrl,
   getDesign,
@@ -199,6 +196,8 @@ const mediaDropTarget = ref<"library" | "inspector" | null>(null);
 const shortcutsOpen = ref(false);
 const shortcutQuery = ref("");
 const shortcutSearchInput = ref<HTMLInputElement | null>(null);
+const previewOpen = ref(false);
+const previewSide = ref<EditorSide>("front");
 const backgroundRemovingLayerId = ref<string | null>(null);
 const backgroundRemovalError = ref("");
 const paletteExtractingLayerId = ref<string | null>(null);
@@ -1441,6 +1440,15 @@ function handleZoomMenuKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") zoomMenuOpen.value = false;
 }
 
+function openPreview(): void {
+  previewSide.value = activeSide.value;
+  previewOpen.value = true;
+}
+
+function closePreview(): void {
+  previewOpen.value = false;
+}
+
 function openShortcutDialog(): void {
   shortcutsOpen.value = true;
   shortcutQuery.value = "";
@@ -1464,7 +1472,10 @@ function handleEditorKeydown(event: KeyboardEvent): void {
 
   if (key === "escape") {
     zoomMenuOpen.value = false;
-    if (shortcutsOpen.value) {
+    if (previewOpen.value) {
+      event.preventDefault();
+      closePreview();
+    } else if (shortcutsOpen.value) {
       event.preventDefault();
       closeShortcutDialog();
     } else if (!isEditingTarget(event.target)) {
@@ -2140,20 +2151,8 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="editor-v2__header-actions">
-        <button class="editor-v2__header-icon" type="button" aria-label="Preview" title="Preview">
+        <button class="editor-v2__header-icon editor-v2__preview-icon" type="button" aria-label="Preview card" title="Preview Front and Back" @click="openPreview">
           <Play :size="16" :stroke-width="1.8" aria-hidden="true" />
-        </button>
-        <button class="editor-v2__header-icon" type="button" aria-label="Presentation view" title="Presentation view">
-          <Monitor :size="16" :stroke-width="1.8" aria-hidden="true" />
-        </button>
-        <button class="editor-v2__header-icon" type="button" aria-label="Comments" title="Comments">
-          <PanelRight :size="16" :stroke-width="1.8" aria-hidden="true" />
-        </button>
-        <button class="editor-v2__header-icon" type="button" aria-label="Notifications" title="Notifications">
-          <Bell :size="16" :stroke-width="1.8" aria-hidden="true" />
-        </button>
-        <button class="editor-v2__header-icon" type="button" aria-label="More actions" title="More actions">
-          <Menu :size="17" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <button
           class="editor-v2__header-icon editor-v2__export-icon"
@@ -2184,10 +2183,7 @@ onBeforeUnmount(() => {
         >
           <ShoppingCart :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
-        <button class="editor-v2__share" type="button">
-          <Share2 :size="15" :stroke-width="1.8" aria-hidden="true" />
-          <span>Share</span>
-        </button>
+
         <button
           class="editor-v2__save"
           type="button"
@@ -3365,6 +3361,72 @@ onBeforeUnmount(() => {
     </div>
 
     <div
+      v-if="previewOpen"
+      class="editor-v2__preview-backdrop"
+      role="presentation"
+      @pointerdown.self="closePreview"
+    >
+      <section
+        class="editor-v2__preview-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="editor-preview-title"
+        data-preview-dialog
+      >
+        <header>
+          <div>
+            <span>Print preview</span>
+            <h2 id="editor-preview-title">{{ document.name }}</h2>
+          </div>
+          <button type="button" aria-label="Close preview" title="Close preview" @click="closePreview">
+            <X :size="18" :stroke-width="1.8" aria-hidden="true" />
+          </button>
+        </header>
+        <div class="editor-v2__preview-tabs" role="tablist" aria-label="Preview card sides">
+          <button
+            v-for="side in sides"
+            :key="side"
+            type="button"
+            role="tab"
+            :aria-selected="previewSide === side"
+            :class="{ active: previewSide === side }"
+            @click="previewSide = side"
+          >
+            {{ side === "front" ? "Front" : "Back" }}
+          </button>
+        </div>
+        <div class="editor-v2__preview-body">
+          <div class="editor-v2__preview-label">
+            <strong>{{ previewSide === "front" ? "Front" : "Back" }}</strong>
+            <span>{{ document.card.widthMm }} x {{ document.card.heightMm }} mm</span>
+          </div>
+          <CanvasPreview
+            :layers="document.pages[previewSide].layers"
+            :width-mm="document.card.widthMm"
+            :height-mm="document.card.heightMm"
+            :label="document.pages[previewSide].name + ' print preview'"
+            empty-label="This side is empty"
+            :background="document.pages[previewSide].background"
+          />
+        </div>
+        <footer>
+          <span>Preview does not change the design.</span>
+          <div>
+            <button type="button" class="editor-v2__preview-close" @click="closePreview">Back to editor</button>
+            <button
+              type="button"
+              class="editor-v2__preview-export"
+              :disabled="exportState === 'exporting' || preflightLoading || saveState === 'saving' || saveState === 'loading'"
+              @click="exportPrintPdf"
+            >
+              <Download :size="15" :stroke-width="1.8" aria-hidden="true" />
+              <span>Export PDF</span>
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
+    <div
       v-if="shortcutsOpen"
       class="editor-v2__shortcut-backdrop"
       role="presentation"
@@ -3598,7 +3660,6 @@ a {
 
 .editor-v2__preflight,
 .editor-v2__checkout,
-.editor-v2__share,
 .editor-v2__save {
   height: 31px;
   display: inline-flex;
@@ -3627,8 +3688,7 @@ a {
 }
 
 .editor-v2__preflight:hover,
-.editor-v2__checkout:hover,
-.editor-v2__share:hover {
+.editor-v2__checkout:hover {
   background: var(--editor-soft);
 }
 
@@ -5769,6 +5829,184 @@ a {
   white-space: nowrap;
 }
 
+.editor-v2__preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgb(10 10 12 / 68%);
+  padding: 20px;
+}
+
+.editor-v2__preview-dialog {
+  width: min(760px, 100%);
+  max-height: min(820px, calc(100svh - 40px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #4b4c52;
+  border-radius: 8px;
+  background: #2d2e30;
+  color: #f7f7f8;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 42%);
+}
+
+.editor-v2__preview-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 12px;
+}
+
+.editor-v2__preview-dialog > header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.editor-v2__preview-dialog > header span {
+  color: #b7b9c1;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.editor-v2__preview-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.editor-v2__preview-dialog > header button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #f3f3f4;
+  cursor: pointer;
+}
+
+.editor-v2__preview-dialog > header button:hover {
+  background: #404145;
+}
+
+.editor-v2__preview-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #45464b;
+  padding: 0 20px;
+}
+
+.editor-v2__preview-tabs button {
+  min-width: 92px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #b4b6bf;
+  cursor: pointer;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-v2__preview-tabs button:hover,
+.editor-v2__preview-tabs button.active {
+  border-bottom-color: #f05aa8;
+  color: #fff;
+}
+
+.editor-v2__preview-body {
+  min-height: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 24px;
+  scrollbar-color: #73747b transparent;
+  scrollbar-width: thin;
+}
+
+.editor-v2__preview-label {
+  width: min(640px, 100%);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  color: #b7b9c1;
+  font-size: 11px;
+}
+
+.editor-v2__preview-label strong {
+  color: #fff;
+  font-size: 13px;
+}
+
+.editor-v2__preview-body :deep(.canvas-frame) {
+  width: min(640px, 100%);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
+}
+
+.editor-v2__preview-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #45464b;
+  color: #aeb0b7;
+  padding: 12px 20px;
+  font-size: 10px;
+}
+
+.editor-v2__preview-dialog > footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-v2__preview-close,
+.editor-v2__preview-export {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #5b5c61;
+  border-radius: 5px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editor-v2__preview-close {
+  background: transparent;
+  color: #f0f0f2;
+}
+
+.editor-v2__preview-export {
+  border-color: #b8327e;
+  background: #bd3783;
+  color: #fff;
+}
+
+.editor-v2__preview-close:hover {
+  background: #404145;
+}
+
+.editor-v2__preview-export:hover:not(:disabled) {
+  background: #cf438f;
+}
+
+.editor-v2__preview-close:disabled,
+.editor-v2__preview-export:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
 .editor-v2__shortcut-backdrop {
   position: fixed;
   inset: 0;
@@ -5998,9 +6236,7 @@ textarea:focus-visible {
     display: none;
   }
 
-  .editor-v2__header-icon:nth-child(-n + 4),
-  .editor-v2__preflight span,
-  .editor-v2__share span {
+  .editor-v2__preflight span {
     display: none;
   }
 
@@ -6089,6 +6325,35 @@ textarea:focus-visible {
     justify-content: flex-start;
   }
 }
+@media (max-width: 600px) {
+  .editor-v2__preview-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .editor-v2__preview-dialog {
+    max-height: calc(100svh - 20px);
+  }
+
+  .editor-v2__preview-body {
+    padding: 18px 14px;
+  }
+
+  .editor-v2__preview-dialog > footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .editor-v2__preview-dialog > footer > div {
+    width: 100%;
+  }
+
+  .editor-v2__preview-close,
+  .editor-v2__preview-export {
+    flex: 1;
+  }
+}
 @media (max-width: 520px) {
   .editor-v2__header {
     gap: 7px;
@@ -6102,6 +6367,7 @@ textarea:focus-visible {
     display: none;
   }
 
+  .editor-v2__header-icon.editor-v2__preview-icon,
   .editor-v2__header-icon.editor-v2__export-icon {
     display: grid;
   }
@@ -6116,7 +6382,6 @@ textarea:focus-visible {
 
   .editor-v2__preflight,
   .editor-v2__checkout,
-  .editor-v2__share,
   .editor-v2__save {
     width: 32px;
     justify-content: center;
@@ -6124,7 +6389,6 @@ textarea:focus-visible {
   }
 
   .editor-v2__preflight span,
-  .editor-v2__share span,
   .editor-v2__save span {
     display: none;
   }
