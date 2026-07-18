@@ -25,9 +25,10 @@ import {
   type PaperStock,
   type PaperStockInput,
 } from "../api";
+import AdminPrintPanel from "../components/AdminPrintPanel.vue";
 import TemplateThumbnail from "../components/TemplateThumbnail.vue";
 
-type AdminTab = "orders" | "templates" | "papers" | "albums";
+type AdminTab = "orders" | "templates" | "papers" | "albums" | "print";
 
 const tab = ref<AdminTab>("orders");
 const me = ref<AuthUser | null>(null);
@@ -259,12 +260,17 @@ function money(value: number): string {
         <button type="button" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">Templates</button>
         <button type="button" :class="{ active: tab === 'papers' }" @click="tab = 'papers'">Paper stock</button>
         <button type="button" :class="{ active: tab === 'albums' }" @click="tab = 'albums'">User albums</button>
+        <button type="button" :class="{ active: tab === 'print' }" @click="tab = 'print'">Print</button>
       </div>
 
       <p v-if="message" class="save-status" role="status">{{ message }}</p>
       <p v-if="error" class="error-text" role="alert">{{ error }}</p>
 
-      <div v-if="tab === 'orders'" class="account-panel admin-panel">
+      <div v-if="tab === 'print'" class="account-panel admin-panel admin-print-root-wrapper">
+        <AdminPrintPanel :orders="orders" :templates="templates" />
+      </div>
+
+      <div v-else-if="tab === 'orders'" class="account-panel admin-panel">
         <h3>Incoming orders ({{ orders.length }})</h3>
         <p v-if="orders.length === 0" class="muted">No orders yet.</p>
         <div v-for="order in orders" :key="order.id" class="admin-row admin-order-row">

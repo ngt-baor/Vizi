@@ -70,6 +70,18 @@ class OrderItem {
         this.subtotal = subtotal;
     }
 
+    Design design() {
+        return design;
+    }
+
+    String designSnapshotJson() {
+        return designSnapshotJson;
+    }
+
+    String printConfigJson() {
+        return printConfigJson;
+    }
+
     Long id() {
         return id;
     }

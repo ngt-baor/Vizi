@@ -421,7 +421,13 @@ class OrderApiIntegrationTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.totalAmount").value(246600.00))
                 .andExpect(jsonPath("$.items[0].quantity").value(137))
-                .andExpect(jsonPath("$.items[0].subtotal").value(246600.00));
+                .andExpect(jsonPath("$.items[0].subtotal").value(246600.00))
+                .andExpect(jsonPath("$.items[0].designId").value(designId.longValue()))
+                .andExpect(jsonPath("$.items[0].designName").value("Exact Quantity Card"))
+                .andExpect(jsonPath("$.items[0].designSnapshotJson").value(org.hamcrest.Matchers.containsString("Exact")))
+                .andExpect(jsonPath("$.items[0].widthMm").value(90.00))
+                .andExpect(jsonPath("$.items[0].heightMm").value(54.00))
+                .andExpect(jsonPath("$.items[0].printConfigJson").value(org.hamcrest.Matchers.containsString("matte-350")));
     }
     static boolean localPostgresAvailable() {
         if (PASSWORD == null || PASSWORD.isBlank()) {

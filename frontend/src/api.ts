@@ -163,10 +163,15 @@ export type StockSearchResponse = {
 };
 
 export type OrderItemResponse = {
-
   id: number;
   quantity: number;
   subtotal: number;
+  designId: number;
+  designName: string;
+  designSnapshotJson: string;
+  widthMm: number;
+  heightMm: number;
+  printConfigJson: string;
 };
 
 export type OrderResponse = {
