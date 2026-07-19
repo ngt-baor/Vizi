@@ -79,6 +79,8 @@ import {
 } from "../api";
 import {
   createEditorDocumentV2,
+  isUnmodifiedStarterDocumentV2,
+  migrateLegacyCanvasToV2,
   readEditorDocumentV2,
   type EditorDocumentV2,
   type EditorFillMode,
@@ -2142,9 +2144,21 @@ async function loadInitialDocument(): Promise<void> {
   try {
     const design = await getDesign(designId);
     const remoteDocument = readEditorDocumentV2(design.canvasJson);
+    const migratedDocument = remoteDocument
+      ? null
+      : migrateLegacyCanvasToV2(design.canvasJson, {
+        documentId: documentId.value,
+        name: design.name,
+        widthMm: design.widthMm,
+        heightMm: design.heightMm,
+        updatedAt: design.updatedAt,
+      });
+    const editedLocalDocument = localDocument && !isUnmodifiedStarterDocumentV2(localDocument)
+      ? localDocument
+      : null;
     const nextDocument = remoteDocument?.documentId === documentId.value
       ? remoteDocument
-      : localDocument ?? createEditorDocumentV2(documentId.value);
+      : editedLocalDocument ?? migratedDocument ?? localDocument ?? createEditorDocumentV2(documentId.value);
     nextDocument.name = design.name;
     if (Number.isFinite(design.widthMm) && design.widthMm > 0) {
       nextDocument.card.widthMm = design.widthMm;

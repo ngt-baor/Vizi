@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import type { EditorLayerV2 } from "../editor-v2/document";
+import { shapeBorderRadius, shapeBoxShadow, shapeClipPath, shapeFillBackground } from "../editor-v2/shapeAppearance";
 
 type CanvasLayer = Record<string, unknown> & {
   type?: string;
@@ -118,6 +120,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const isIcon = layer.type === "icon";
   const isText = layer.type === "text";
   const isImage = layer.type === "image";
+  const isFrame = isImage && !layerImageSource(layer);
   const textLike = isText || isIcon;
   const width = numberValue(layer.width, isText ? 45 : isIcon ? 10 : 32);
   const height = numberValue(layer.height, isText ? 16 : isIcon ? 10 : 26);
@@ -134,6 +137,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   const shadow = shadowBlur > 0
     ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${numberValue(layer.shadowSpread, 0)}px ${shadowColor}`
     : "none";
+  const shapeShadow = layer.shapeEffect ? shapeBoxShadow(layer as EditorLayerV2) : shadow;
   const textShadow = shadowBlur > 0
     ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${shadowColor}`
     : "none";
@@ -142,6 +146,11 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
   // glyphs do not fall back to Georgia (which lacks most symbols).
   const textFontSize = `clamp(10px, ${(fontSize / 3.8).toFixed(3)}cqw, ${Math.max(fontSize, 12)}px)`;
   const iconFontSize = `clamp(14px, ${(fontSize / 2.6).toFixed(3)}cqw, ${Math.max(fontSize * 1.2, 18)}px)`;
+  const usesV2ShapeFill = layer.fillMode === "linear"
+    || layer.fillMode === "radial"
+    || layer.shapeEffect === "hollow"
+    || isFrame;
+  const shapeLike = layer.type === "rect" || layer.type === "ellipse" || isFrame;
 
   return {
     left: `${x}%`,
@@ -149,11 +158,16 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
     width: `${width}%`,
     height: `${height}%`,
     color: stringValue(layer.color ?? layer.fill, "#1f2937"),
-    background: textLike || isImage
+    background: textLike || (isImage && !isFrame)
       ? "transparent"
-      : stringValue(layer.fill ?? layer.background, "rgba(255,255,255,0.72)"),
-    border: textLike || isImage ? "0" : `${strokeWidth}px solid ${stroke}`,
-    borderRadius: layer.type === "ellipse" ? "9999px" : `${numberValue(layer.radius, 10)}px`,
+      : usesV2ShapeFill
+        ? shapeFillBackground(layer as EditorLayerV2)
+        : stringValue(layer.fill ?? layer.background, "rgba(255,255,255,0.72)"),
+    border: textLike || (isImage && !isFrame) ? "0" : `${strokeWidth}px solid ${stroke}`,
+    borderRadius: shapeLike
+      ? shapeBorderRadius(layer as EditorLayerV2)
+      : `${numberValue(layer.radius, 10)}px`,
+    clipPath: shapeLike ? shapeClipPath(layer as EditorLayerV2) ?? "none" : "none",
     fontFamily: isIcon
       ? "\"Segoe UI Emoji\", \"Apple Color Emoji\", \"Noto Color Emoji\", \"Segoe UI Symbol\", \"Noto Sans Symbols 2\", system-ui, sans-serif"
       : stringValue(
@@ -163,7 +177,7 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
     fontSize: isIcon ? iconFontSize : isText ? textFontSize : `${fontSize}px`,
     fontWeight: numberValue(layer.fontWeight, isText ? 600 : 700),
     opacity: numberValue(layer.opacity, 1),
-    boxShadow: textLike ? "none" : shadow,
+    boxShadow: textLike ? "none" : shapeShadow,
     textShadow: isText ? textShadow : "none",
     filter: blur > 0 ? `blur(${blur}px)` : "none",
     transform: `rotate(${numberValue(layer.rotation, 0)}deg)`,

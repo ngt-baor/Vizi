@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, Copy, LockKeyhole, Trash2 } from "@lucide/vue";
+import { ArrowDown, ArrowUp, Copy, ImageIcon, LockKeyhole, Trash2 } from "@lucide/vue";
 import { computed, onBeforeUnmount, ref } from "vue";
 import type { CSSProperties } from "vue";
 import type { EditorDocumentV2, EditorLayerV2, EditorPageV2 } from "./document";
+import { shapeBorderRadius, shapeBoxShadow, shapeClipPath, shapeFillBackground } from "./shapeAppearance";
 
 type LayerMovePayload = {
   layerId: string;
@@ -71,6 +72,8 @@ const props = defineProps<{
   document: EditorDocumentV2;
   page: EditorPageV2;
   zoom: number;
+  panX?: number;
+  panY?: number;
   selectedLayerId?: string | null;
   showGuides?: boolean;
 }>();
@@ -92,7 +95,7 @@ const resizeHandles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w
 const canvasStyle = computed<CSSProperties>(() => ({
   aspectRatio: String(props.document.card.widthMm) + " / " + String(props.document.card.heightMm),
   background: props.page.background,
-  transform: "scale(" + String(props.zoom / 100) + ")",
+  transform: "translate(" + String(props.panX ?? 0) + "px, " + String(props.panY ?? 0) + "px) scale(" + String(props.zoom / 100) + ")",
 }));
 
 const safeGuideStyle = computed<CSSProperties>(() => ({
@@ -110,6 +113,8 @@ function safeImageSource(src: string | undefined): string {
 }
 
 function layerStyle(layer: EditorLayerV2): CSSProperties {
+  const isShape = layer.type === "rect" || layer.type === "ellipse";
+  const isImagePlaceholder = layer.type === "image" && !safeImageSource(layer.src);
   return {
     left: String(layer.x) + "%",
     top: String(layer.y) + "%",
@@ -118,11 +123,15 @@ function layerStyle(layer: EditorLayerV2): CSSProperties {
     opacity: layer.opacity,
     transform: "rotate(" + String(layer.rotation) + "deg)",
     color: layer.type === "text" ? layer.fill : undefined,
-    background: layer.type === "rect" || layer.type === "ellipse" ? layer.fill : undefined,
+    background: isShape || isImagePlaceholder
+      ? shapeFillBackground(layer)
+      : layer.type === "image" ? "transparent" : undefined,
     border: layer.strokeWidth
       ? String(layer.strokeWidth) + "px solid " + (layer.stroke ?? "transparent")
       : undefined,
-    borderRadius: layer.type === "ellipse" ? "50%" : String(layer.cornerRadius ?? 0) + "px",
+    borderRadius: isShape || isImagePlaceholder ? shapeBorderRadius(layer) : undefined,
+    clipPath: isShape || isImagePlaceholder ? shapeClipPath(layer) : undefined,
+    boxShadow: isShape || isImagePlaceholder ? shapeBoxShadow(layer) : undefined,
     fontFamily: layer.fontFamily,
     fontSize: layer.fontSize ? String(layer.fontSize) + "px" : undefined,
     fontWeight: layer.fontWeight,
@@ -413,6 +422,13 @@ onBeforeUnmount(() => {
           :alt="layer.name"
           crossorigin="anonymous"
         >
+        <ImageIcon
+          v-else-if="layer.type === 'image'"
+          class="v2-layer__placeholder-icon"
+          :size="28"
+          :stroke-width="1.4"
+          aria-hidden="true"
+        />
       </div>
     </div>
 
@@ -565,6 +581,14 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.v2-layer__placeholder-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: #9aa5b6;
+  transform: translate(-50%, -50%);
 }
 
 .v2-selection-box {
