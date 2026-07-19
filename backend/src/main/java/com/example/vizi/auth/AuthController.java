@@ -27,9 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
 class AuthController {
 
     private final AuthService authService;
+    private final UserSessionService userSessionService;
 
-    AuthController(AuthService authService) {
+    AuthController(AuthService authService, UserSessionService userSessionService) {
         this.authService = authService;
+        this.userSessionService = userSessionService;
     }
 
     @GetMapping("/csrf")
@@ -74,9 +76,15 @@ class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
-            Authentication authentication
+            Authentication authentication,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
-        authService.changePassword(authentication.getName(), request);
+        var principalName = authentication.getName();
+        authService.changePassword(principalName, request);
+        userSessionService.revokeAll(principalName);
+        new SecurityContextLogoutHandler().logout(httpRequest, httpResponse, authentication);
+        SecurityContextHolder.clearContext();
     }
 }
 

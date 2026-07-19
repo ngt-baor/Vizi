@@ -1,5 +1,8 @@
 package com.example.vizi.auth;
 
+import java.time.Duration;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import org.springframework.session.web.http.DefaultCookieSerializer;
 
 @Configuration
 class SecurityConfig {
@@ -20,6 +24,22 @@ class SecurityConfig {
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    DefaultCookieSerializer sessionCookieSerializer(
+            @Value("${server.servlet.session.cookie.max-age:30d}") Duration maxAge,
+            @Value("${server.servlet.session.cookie.same-site:Lax}") String sameSite,
+            @Value("${server.servlet.session.cookie.secure:false}") boolean secure
+    ) {
+        var serializer = new DefaultCookieSerializer();
+        serializer.setCookieName("SESSION");
+        serializer.setCookiePath("/");
+        serializer.setCookieMaxAge(Math.toIntExact(maxAge.toSeconds()));
+        serializer.setUseHttpOnlyCookie(true);
+        serializer.setUseSecureCookie(secure);
+        serializer.setSameSite(sameSite);
+        return serializer;
     }
 
     @Bean
@@ -52,6 +72,8 @@ class SecurityConfig {
                         .hasRole("ADMIN")
                         .anyRequest()
                         .authenticated())
+                .sessionManagement(session -> session
+                        .sessionFixation(fixation -> fixation.changeSessionId()))
                 .formLogin(form -> form
                         .loginProcessingUrl("/api/auth/login")
                         .usernameParameter("email")

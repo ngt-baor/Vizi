@@ -126,9 +126,11 @@ async function savePassword(): Promise<void> {
   message.value = "";
   try {
     await changeAccountPassword(currentPassword.value, newPassword.value);
+    email.value = currentUser.value?.email ?? email.value;
+    currentUser.value = null;
     currentPassword.value = "";
     newPassword.value = "";
-    message.value = "Password updated.";
+    message.value = "Password updated. Please sign in again.";
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot change password";
   } finally {
@@ -280,6 +282,7 @@ async function logout(): Promise<void> {
         />
       </label>
 
+      <p v-if="message" class="save-status" role="status">{{ message }}</p>
       <p v-if="error" class="error-text" role="alert">{{ error }}</p>
       <button class="primary-action" type="submit" :disabled="submitting">
         {{ submitting ? "Please wait..." : mode === "login" ? "Sign in" : "Create account" }}

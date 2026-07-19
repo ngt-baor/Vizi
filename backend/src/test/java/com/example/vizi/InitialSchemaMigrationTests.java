@@ -56,6 +56,25 @@ class InitialSchemaMigrationTests {
     }
 
     @Test
+    void persistentSessionMigrationMatchesSpringSessionJdbcSchema() throws Exception {
+        var sql = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V6__persistent_http_sessions.sql"
+        )).toLowerCase(Locale.ROOT);
+
+        assertThat(sql)
+                .contains("create table spring_session")
+                .contains("create table spring_session_attributes")
+                .contains("principal_name varchar(320)")
+                .contains("attribute_bytes bytea not null")
+                .contains("create unique index spring_session_ix1")
+                .contains("create index spring_session_ix2")
+                .contains("create index spring_session_ix3")
+                .contains("on delete cascade")
+                .doesNotContain(" drop ")
+                .doesNotContain("truncate ")
+                .doesNotContain("delete from ");
+    }
+    @Test
     void flywayMigratesEmptyPostgreSqlDatabaseAndSupportsMvpFlow() throws Exception {
         assumeTrue(PASSWORD != null && !PASSWORD.isBlank(), "local PostgreSQL password env is not available");
         assumeTrue(canConnectToLocalPostgres(), "local PostgreSQL project cluster is not running");
@@ -123,6 +142,8 @@ class InitialSchemaMigrationTests {
                 "orders",
                 "order_items",
                 "paper_stocks",
+                "spring_session",
+                "spring_session_attributes",
                 "flyway_schema_history"
         );
         try (var connection = DriverManager.getConnection(url, "vizi", PASSWORD);
@@ -187,7 +208,10 @@ class InitialSchemaMigrationTests {
                 "idx_order_items_order_id",
                 "idx_order_items_design_id",
                 "idx_templates_active_category",
-                "idx_paper_stocks_active_status"
+                "idx_paper_stocks_active_status",
+                "spring_session_ix1",
+                "spring_session_ix2",
+                "spring_session_ix3"
         );
         try (var connection = DriverManager.getConnection(url, "vizi", PASSWORD);
              var statement = connection.createStatement();
