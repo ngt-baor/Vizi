@@ -142,10 +142,11 @@ function layerStyle(layer: CanvasLayer): Record<string, string | number> {
     ? `${numberValue(layer.shadowX, 0)}px ${numberValue(layer.shadowY, 4)}px ${shadowBlur}px ${shadowColor}`
     : "none";
 
-  // Text scales with card width (cqw). Icons use symbol/emoji font stacks so
-  // glyphs do not fall back to Georgia (which lacks most symbols).
-  const textFontSize = `clamp(10px, ${(fontSize / 3.8).toFixed(3)}cqw, ${Math.max(fontSize, 12)}px)`;
-  const iconFontSize = `clamp(14px, ${(fontSize / 2.6).toFixed(3)}cqw, ${Math.max(fontSize * 1.2, 18)}px)`;
+  // Canvas font sizes are authored against the canonical 520 px preview.
+  // Keep them proportional in thumbnails instead of applying a fixed minimum.
+  const textFontSize = `min(${fontSize}px, ${(fontSize / 5.2).toFixed(3)}cqw)`;
+  const iconSize = fontSize * 1.2;
+  const iconFontSize = `min(${iconSize}px, ${(iconSize / 5.2).toFixed(3)}cqw)`;
   const usesV2ShapeFill = layer.fillMode === "linear"
     || layer.fillMode === "radial"
     || layer.shapeEffect === "hollow"
