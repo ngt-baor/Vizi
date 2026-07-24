@@ -35,6 +35,14 @@ class Icons8ServiceTests {
                       "previewUrl": "https://img.icons8.com/96/material/phone.png",
                       "isColor": false,
                       "isAnimated": false
+                    },
+                    {
+                      "id": "13304",
+                      "name": "Apple Fruit",
+                      "commonName": "apple",
+                      "platform": "color",
+                      "isColor": true,
+                      "isAnimated": false
                     }
                   ],
                   "message": "ok"
@@ -49,17 +57,20 @@ class Icons8ServiceTests {
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/api/iconsets/v5/search"
             );
 
-            var response = service.search("phone", "en", "ios7", 12);
+            var response = service.search("phone", "en", "androidL,fluent,ios7,color,win10", 12, 48);
 
             assertThat(path.get()).isEqualTo("/api/iconsets/v5/search");
-            assertThat(query.get()).contains("term=phone", "language=en", "platform=ios7", "amount=12");
+            assertThat(query.get()).contains("term=phone", "language=en", "platform=androidL%2Cfluent%2Cios7%2Ccolor%2Cwin10", "amount=12", "offset=48");
             assertThat(apiKey.get()).isEqualTo("test-icons-key");
             assertThat(response.configured()).isTrue();
             assertThat(response.creditRequired()).isTrue();
             assertThat(response.creditText()).isEqualTo("Icons by Icons8");
             assertThat(response.creditUrl()).isEqualTo("https://icons8.com");
-            assertThat(response.icons()).hasSize(1);
+            assertThat(response.icons()).hasSize(2);
             assertThat(response.icons().get(0).previewUrl()).isEqualTo("https://img.icons8.com/96/material/phone.png");
+            assertThat(response.icons().get(0).commonName()).isEqualTo("phone");
+            assertThat(response.icons().get(1).previewUrl()).isEqualTo("https://img.icons8.com/color/96/apple.png");
+            assertThat(response.icons().get(1).previewUrl()).doesNotContain("color=000000");
             assertThat(response.icons().get(0).sourceUrl()).contains("icons8.com/icon/9659");
         } finally {
             server.stop(0);

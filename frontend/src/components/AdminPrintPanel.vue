@@ -4,10 +4,14 @@ import type { AdminOrder, AdminTemplate, OrderItemResponse } from "../api";
 import CanvasPreview from "./CanvasPreview.vue";
 import {
   calculateImposition,
+  DEFAULT_PRINT_BLEED_MM,
+  DEFAULT_PRINT_GUTTER_MM,
+  DEFAULT_PRINT_MARGIN_MM,
   PRINT_SHEETS,
   reflectPlacement,
   type ImpositionPlacement,
   type PlacementReflection,
+  type PrintOrientation,
   type PrintSheetKey,
 } from "../printImposition";
 import {
@@ -49,6 +53,13 @@ const selectedSide = ref<PrintSideMode>("both");
 const backAlignment = ref<BackAlignment>("long-edge");
 const showCropMarks = ref(true);
 const selectedSheet = ref<PrintSheetKey>("A4");
+const selectedOrientation = ref<PrintOrientation>("portrait");
+const printCardWidthMm = ref<number | string>(90);
+const printCardHeightMm = ref<number | string>(54);
+const printBleedMm = ref<number | string>(DEFAULT_PRINT_BLEED_MM);
+const printHorizontalGapMm = ref<number | string>(DEFAULT_PRINT_GUTTER_MM);
+const printVerticalGapMm = ref<number | string>(DEFAULT_PRINT_GUTTER_MM);
+const printMarginMm = ref<number | string>(DEFAULT_PRINT_MARGIN_MM);
 const templateQuantity = ref("1");
 const printError = ref("");
 
@@ -122,10 +133,15 @@ const imposition = computed(() => {
   }
   try {
     return calculateImposition({
-      cardWidthMm: source.value.widthMm,
-      cardHeightMm: source.value.heightMm,
+      cardWidthMm: Number(printCardWidthMm.value),
+      cardHeightMm: Number(printCardHeightMm.value),
       quantity: selectedQuantity.value,
       sheet: selectedSheet.value,
+      orientation: selectedOrientation.value,
+      bleedMm: Number(printBleedMm.value),
+      horizontalGapMm: Number(printHorizontalGapMm.value),
+      verticalGapMm: Number(printVerticalGapMm.value),
+      marginMm: Number(printMarginMm.value),
     });
   } catch (error) {
     printError.value = error instanceof Error ? error.message : "Cannot calculate print layout";
@@ -155,7 +171,7 @@ const renderedSheets = computed(() => {
       key: String(sheetIndex) + ":" + side,
       side,
       sheetIndex,
-      placements: side === "back"
+      placements: side === "back" && selectedSide.value === "both"
         ? placements.map((placement) =>
           reflectPlacement(placement, imposition.value!.sheet, backReflection.value),
         )
@@ -184,9 +200,40 @@ watch(
   { immediate: true },
 );
 
-watch([source, selectedSheet], () => {
-  printError.value = "";
-});
+function resetCardSize(): void {
+  if (!source.value) {
+    return;
+  }
+  printCardWidthMm.value = source.value.widthMm;
+  printCardHeightMm.value = source.value.heightMm;
+}
+
+watch(
+  [
+    () => source.value?.key,
+    () => source.value?.widthMm,
+    () => source.value?.heightMm,
+  ],
+  resetCardSize,
+  { immediate: true },
+);
+
+watch(
+  [
+    source,
+    selectedSheet,
+    selectedOrientation,
+    printCardWidthMm,
+    printCardHeightMm,
+    printBleedMm,
+    printHorizontalGapMm,
+    printVerticalGapMm,
+    printMarginMm,
+  ],
+  () => {
+    printError.value = "";
+  },
+);
 
 function sourceOptions(): string {
   return source.value?.kind === "order" ? "Order snapshot" : "Saved template";
@@ -249,6 +296,11 @@ function printCards(): void {
     :data-print-total-count="imposition?.quantity ?? 0"
     :data-print-side-mode="selectedSide"
     :data-print-back-alignment="backAlignment"
+    :data-print-orientation="selectedOrientation"
+    :data-print-card-width="imposition?.cardWidthMm ?? 0"
+    :data-print-card-height="imposition?.cardHeightMm ?? 0"
+    :data-print-horizontal-gap="imposition?.horizontalGapMm ?? 0"
+    :data-print-vertical-gap="imposition?.verticalGapMm ?? 0"
   >
     <div class="admin-print-panel__chrome">
       <div class="admin-panel-header">
@@ -269,92 +321,141 @@ function printCards(): void {
         </button>
       </div>
 
-      <div class="admin-print-controls">
-        <div class="admin-print-source">
-          <span class="admin-print-control-label">Source</span>
-          <div class="mode-control">
-            <button
-              type="button"
-              :class="{ active: sourceMode === 'order' }"
-              :disabled="orderSources.length === 0"
-              @click="sourceMode = 'order'"
-            >
-              Order
-            </button>
-            <button
-              type="button"
-              :class="{ active: sourceMode === 'template' }"
-              :disabled="templates.length === 0"
-              @click="sourceMode = 'template'"
-            >
-              Template
-            </button>
+      <div class="admin-print-control-section">
+        <div class="admin-print-controls">
+          <div class="admin-print-source">
+            <span class="admin-print-control-label">Source</span>
+            <div class="mode-control">
+              <button
+                type="button"
+                :class="{ active: sourceMode === 'order' }"
+                :disabled="orderSources.length === 0"
+                @click="sourceMode = 'order'"
+              >
+                Order
+              </button>
+              <button
+                type="button"
+                :class="{ active: sourceMode === 'template' }"
+                :disabled="templates.length === 0"
+                @click="sourceMode = 'template'"
+              >
+                Template
+              </button>
+            </div>
+          </div>
+
+          <label class="admin-print-field admin-print-field--source-select" v-if="sourceMode === 'order'">
+            Order item
+            <select v-model="selectedOrderItemKey" :disabled="orderSources.length === 0">
+              <option v-if="orderSources.length === 0" value="">No order snapshots</option>
+              <option v-for="item in orderSources" :key="item.key" :value="item.key">
+                {{ item.order.id }} - {{ item.item.designName || "Customer card" }} - {{ item.item.quantity }} cards
+              </option>
+            </select>
+          </label>
+
+          <label class="admin-print-field admin-print-field--source-select" v-else>
+            Saved template
+            <select v-model="selectedTemplateId" :disabled="templates.length === 0">
+              <option v-if="templates.length === 0" value="">No templates</option>
+              <option v-for="template in templates" :key="template.id" :value="String(template.id)">
+                {{ template.name }} - {{ template.widthMm }} x {{ template.heightMm }} mm
+              </option>
+            </select>
+          </label>
+
+          <label v-if="sourceMode === 'template'" class="admin-print-field">
+            Quantity
+            <input v-model.number="templateQuantity" type="number" min="1" max="100000" step="1" />
+          </label>
+          <div v-else class="admin-print-field admin-print-fixed-quantity">
+            Quantity
+            <strong>{{ selectedQuantity }} cards</strong>
+            <small>Fixed from the order</small>
           </div>
         </div>
-
-        <label class="admin-print-field admin-print-field--source-select" v-if="sourceMode === 'order'">
-          Order item
-          <select v-model="selectedOrderItemKey" :disabled="orderSources.length === 0">
-            <option v-if="orderSources.length === 0" value="">No order snapshots</option>
-            <option v-for="item in orderSources" :key="item.key" :value="item.key">
-              {{ item.order.id }} - {{ item.item.designName || "Customer card" }} - {{ item.item.quantity }} cards
-            </option>
-          </select>
-        </label>
-
-        <label class="admin-print-field admin-print-field--source-select" v-else>
-          Saved template
-          <select v-model="selectedTemplateId" :disabled="templates.length === 0">
-            <option v-if="templates.length === 0" value="">No templates</option>
-            <option v-for="template in templates" :key="template.id" :value="String(template.id)">
-              {{ template.name }} - {{ template.widthMm }} x {{ template.heightMm }} mm
-            </option>
-          </select>
-        </label>
-
-        <label v-if="sourceMode === 'template'" class="admin-print-field">
-          Quantity
-          <input v-model.number="templateQuantity" type="number" min="1" max="100000" step="1" />
-        </label>
-        <div v-else class="admin-print-field admin-print-fixed-quantity">
-          Quantity
-          <strong>{{ selectedQuantity }} cards</strong>
-          <small>Fixed from the order</small>
-        </div>
-
-        <label class="admin-print-field">
-          Printed sides
-          <select v-model="selectedSide">
-            <option value="front">Front</option>
-            <option value="back">Back</option>
-            <option value="both">Front + Back</option>
-          </select>
-        </label>
-
-        <label v-if="selectedSide !== 'front'" class="admin-print-field">
-          Back alignment
-          <select v-model="backAlignment">
-            <option value="long-edge">Flip long edge (mirror X)</option>
-            <option value="short-edge">Flip short edge (mirror Y)</option>
-            <option value="same">Same position</option>
-          </select>
-        </label>
-
-        <label class="admin-print-field">
-          Paper size
-          <select v-model="selectedSheet">
-            <option v-for="sheet in Object.values(PRINT_SHEETS)" :key="sheet.key" :value="sheet.key">
-              {{ sheet.key }} - {{ sheet.widthMm }} x {{ sheet.heightMm }} mm
-            </option>
-          </select>
-        </label>
-
-        <label class="admin-print-toggle">
-          <input v-model="showCropMarks" type="checkbox" />
-          <span>Print crop marks</span>
-        </label>
       </div>
 
+      <div class="admin-print-control-section">
+        <h4 class="admin-print-section-title">Print setup</h4>
+        <div class="admin-print-controls admin-print-controls--setup">
+          <label class="admin-print-field">
+            Printed sides
+            <select v-model="selectedSide">
+              <option value="front">Front only (single-sided)</option>
+              <option value="back">Back only (single-sided)</option>
+              <option value="both">Front + Back (duplex)</option>
+            </select>
+          </label>
+
+          <label v-if="selectedSide === 'both'" class="admin-print-field">
+            Back alignment
+            <select v-model="backAlignment">
+              <option value="long-edge">Flip long edge (mirror X)</option>
+              <option value="short-edge">Flip short edge (mirror Y)</option>
+              <option value="same">Same position</option>
+            </select>
+          </label>
+
+          <label class="admin-print-field">
+            Paper size
+            <select v-model="selectedSheet">
+              <option v-for="sheet in Object.values(PRINT_SHEETS)" :key="sheet.key" :value="sheet.key">
+                {{ sheet.key }} - {{ sheet.widthMm }} x {{ sheet.heightMm }} mm
+              </option>
+            </select>
+          </label>
+
+          <label class="admin-print-field">
+            Paper orientation
+            <select v-model="selectedOrientation">
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </label>
+
+          <label class="admin-print-toggle">
+            <input v-model="showCropMarks" type="checkbox" />
+            <span>Print crop marks</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="admin-print-control-section">
+        <div class="admin-print-section-heading">
+          <h4 class="admin-print-section-title">Layout (mm)</h4>
+          <button class="secondary-action admin-print-reset" type="button" @click="resetCardSize">
+            Use design size
+          </button>
+        </div>
+        <div class="admin-print-controls admin-print-controls--layout">
+          <label class="admin-print-field">
+            Card width (mm)
+            <input v-model.number="printCardWidthMm" type="number" min="10" max="500" step="0.5" />
+          </label>
+          <label class="admin-print-field">
+            Card height (mm)
+            <input v-model.number="printCardHeightMm" type="number" min="10" max="500" step="0.5" />
+          </label>
+          <label class="admin-print-field">
+            Bleed (mm)
+            <input v-model.number="printBleedMm" type="number" min="0" max="20" step="0.5" />
+          </label>
+          <label class="admin-print-field">
+            Horizontal gap (mm)
+            <input v-model.number="printHorizontalGapMm" type="number" min="0" max="100" step="0.5" />
+          </label>
+          <label class="admin-print-field">
+            Vertical gap (mm)
+            <input v-model.number="printVerticalGapMm" type="number" min="0" max="100" step="0.5" />
+          </label>
+          <label class="admin-print-field">
+            Sheet margin (mm)
+            <input v-model.number="printMarginMm" type="number" min="0" max="100" step="0.5" />
+          </label>
+        </div>
+      </div>
       <p class="admin-print-source-note">
         {{ source?.label || "Choose an order or template" }} - {{ sourceOptions() }}
       </p>
@@ -365,9 +466,10 @@ function printCards(): void {
         <div><strong>{{ imposition.sheetCount }}</strong><span>physical sheets</span></div>
         <div><strong>{{ renderedSheets.length }}</strong><span>printed sides</span></div>
         <div><strong>{{ imposition.columns }} x {{ imposition.rows }}</strong><span>grid</span></div>
+        <div><strong>{{ imposition.cardWidthMm }} x {{ imposition.cardHeightMm }} mm</strong><span>card size</span></div>
         <div><strong>{{ imposition.bleedMm }} mm</strong><span>bleed</span></div>
-        <div><strong>{{ imposition.gutterMm }} mm</strong><span>gutter</span></div>
-        <div><strong>{{ imposition.marginMm }} mm</strong><span>margin</span></div>
+        <div><strong>{{ imposition.horizontalGapMm }} x {{ imposition.verticalGapMm }} mm</strong><span>H x V gap</span></div>
+        <div><strong>{{ imposition.marginMm }} mm</strong><span>sheet margin</span></div>
       </div>
     </div>
 

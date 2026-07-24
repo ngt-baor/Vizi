@@ -10,6 +10,7 @@ import {
   type PaperStock,
   type PreflightReport,
 } from "../api";
+import { removeCartDesign } from "../cart";
 import CanvasPreview from "../components/CanvasPreview.vue";
 import { type EditorSide } from "../editor-v2/document";
 import {
@@ -141,6 +142,7 @@ async function submitOrder(): Promise<void> {
       return;
     }
     const order = await createOrder(design.value.id, paper.value, quantity.value, roundedCorners.value);
+    removeCartDesign(design.value.id);
     await router.push({ name: "order-detail", params: { orderId: order.id } });
   } catch (unknownError) {
     orderError.value = unknownError instanceof Error ? unknownError.message : "Cannot create order";

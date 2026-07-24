@@ -1539,3 +1539,60 @@ MVP duoc coi la hoan thanh khi:
 - IDOR: moi API lay/sua/xoa `design`, `asset`, `order` phai filter theo current user ID.
 - Brute-force/spam: login, register, contact, upload va AI endpoint can rate limiting theo IP/user/session.
 - Secret management: API key AI, database password, JWT secret va token thanh toan phai nam trong environment variables hoac secret manager, khong ghi vao code.
+
+## 17. Cloud DB setup hien tai - Supabase
+
+### 17.1. Trang thai
+
+- Supabase project da tao: `Vizi-prod`.
+- Project ref: `iyxdfpnxrhbanvrmvgpq`.
+- Data API/PostgREST dang tat, dung voi kien truc Vizi: `Vue FE -> Spring Boot BE -> Supabase PostgreSQL`.
+- Backend se ket noi database bang JDBC, frontend khong goi truc tiep Supabase.
+
+### 17.2. Ket noi khuyen nghi cho backend
+
+Dung Supabase Session Pooler de tuong thich cac backend host chi co IPv4:
+
+```env
+SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require
+SPRING_DATASOURCE_USERNAME=postgres.iyxdfpnxrhbanvrmvgpq
+SPRING_DATASOURCE_PASSWORD=<database-password>
+```
+
+Direct connection chi nen dung khi moi truong co IPv6:
+
+```env
+SPRING_DATASOURCE_URL=jdbc:postgresql://db.iyxdfpnxrhbanvrmvgpq.supabase.co:5432/postgres?sslmode=require
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=<database-password>
+```
+
+### 17.3. File local khong commit
+
+Da tao file local bi Git ignore:
+
+```text
+backend/.env.supabase.local
+```
+
+File nay chua URL/username Supabase va password local. File bi Git ignore, khong duoc commit hoac gui len chat/GitHub.
+
+### 17.4. Lenh test backend voi Supabase
+
+Sau khi dien password vao `backend/.env.supabase.local`, chay:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-backend-supabase.ps1
+```
+
+Ket qua dung:
+
+- Backend khoi dong profile `prod`.
+- Flyway chay migration len Supabase.
+- `GET http://localhost:8080/api/health` tra `UP`.
+
+### 17.5. Luu y bao mat
+
+- Khong commit `backend/.env.supabase.local`.
+- Khong ghi database password, Supabase token, API key vao `Vizi.md`, source code, commit message hoac issue public.
+- Truoc khi deploy backend cloud, dua cac gia tri tren vao secret/env manager cua host cloud.

@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { ShoppingCart, Trash2 } from "@lucide/vue";
 import { RouterLink } from "vue-router";
-import { getDesign, getDesigns, updateDesign, type DesignDetail } from "../api";
+import {
+  deleteDesign,
+  getDesign,
+  getDesigns,
+  updateDesign,
+  type DesignDetail,
+} from "../api";
+import { addCartDesign, getCartDesignIds, removeCartDesign } from "../cart";
 import CanvasPreview from "../components/CanvasPreview.vue";
+import ConfirmDeleteDialog from "../components/ConfirmDeleteDialog.vue";
 import StartDesignDialog from "../components/StartDesignDialog.vue";
 import {
   readEditorPreviewPages,
@@ -19,6 +28,10 @@ const loading = ref(true);
 const error = ref("");
 const renamingId = ref<number | null>(null);
 const renameError = ref("");
+const deleteError = ref("");
+const deletingId = ref<number | null>(null);
+const deleteTarget = ref<DraftCard | null>(null);
+const cartDesignIds = ref(new Set(getCartDesignIds()));
 const startDialogOpen = ref(false);
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -83,6 +96,53 @@ async function renameDraft(design: DraftCard, event: Event): Promise<void> {
     renamingId.value = null;
   }
 }
+
+function addDraftToCart(designId: number, event: Event): void {
+  event.preventDefault();
+  event.stopPropagation();
+  addCartDesign(designId);
+  cartDesignIds.value = new Set(getCartDesignIds());
+}
+
+function openDeleteDialog(design: DraftCard, event: Event): void {
+  event.preventDefault();
+  event.stopPropagation();
+  deleteError.value = "";
+  deleteTarget.value = design;
+}
+
+function closeDeleteDialog(): void {
+  if (deletingId.value === null) {
+    deleteTarget.value = null;
+  }
+}
+
+function deleteDialogTitle(): string {
+  return `Delete "${deleteTarget.value?.name ?? "draft"}"?`;
+}
+
+async function confirmDeleteDraft(): Promise<void> {
+  const target = deleteTarget.value;
+  if (!target || deletingId.value !== null) {
+    return;
+  }
+
+  deletingId.value = target.id;
+  deleteError.value = "";
+  try {
+    await deleteDesign(target.id);
+    removeCartDesign(target.id);
+    cartDesignIds.value = new Set(getCartDesignIds());
+    designs.value = designs.value.filter((design) => design.id !== target.id);
+    deleteTarget.value = null;
+  } catch (unknownError) {
+    deleteError.value = unknownError instanceof Error
+      ? unknownError.message
+      : "Cannot delete draft";
+  } finally {
+    deletingId.value = null;
+  }
+}
 </script>
 
 <template>
@@ -101,7 +161,9 @@ async function renameDraft(design: DraftCard, event: Event): Promise<void> {
       {{ error }}
       <RouterLink v-if="error.includes('Sign in')" to="/account">Open account</RouterLink>
     </p>
-    <p v-else-if="renameError" class="error-text" role="alert">{{ renameError }}</p>
+    <p v-else-if="renameError || deleteError" class="error-text" role="alert">
+      {{ renameError || deleteError }}
+    </p>
     <div v-else-if="designs.length === 0" class="account-panel">
       <p class="eyebrow">No drafts</p>
       <h2>Your workspace is empty</h2>
@@ -160,11 +222,37 @@ async function renameDraft(design: DraftCard, event: Event): Promise<void> {
             >
               {{ renamingId === design.id ? "Saving..." : "Rename" }}
             </button>
+            <button
+              type="button"
+              class="secondary-action button-with-icon"
+              :disabled="cartDesignIds.has(design.id)"
+              @click="addDraftToCart(design.id, $event)"
+            >
+              <ShoppingCart :size="15" aria-hidden="true" />
+              {{ cartDesignIds.has(design.id) ? "In cart" : "Add to cart" }}
+            </button>
+            <button
+              type="button"
+              class="danger-action button-with-icon"
+              :disabled="deletingId === design.id"
+              @click="openDeleteDialog(design, $event)"
+            >
+              <Trash2 :size="15" aria-hidden="true" />
+              Delete
+            </button>
           </div>
         </div>
       </article>
     </div>
 
     <StartDesignDialog :open="startDialogOpen" @close="startDialogOpen = false" />
+    <ConfirmDeleteDialog
+      :open="deleteTarget !== null"
+      :title="deleteDialogTitle()"
+      description="This draft and its saved history will be permanently deleted. This action cannot be undone."
+      :busy="deletingId !== null"
+      @cancel="closeDeleteDialog"
+      @confirm="confirmDeleteDraft"
+    />
   </section>
 </template>

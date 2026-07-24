@@ -3716,12 +3716,47 @@ body {
   gap: 18px;
 }
 
+.admin-print-control-section {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-print-section-title {
+  margin: 0;
+  color: var(--vizi-ink-soft);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-print-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-print-reset {
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
 .admin-print-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 14px;
   align-items: end;
-  margin-top: 22px;
+  margin-top: 0;
+}
+
+.admin-print-controls--setup {
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.admin-print-controls--layout {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
 }
 
 .admin-print-source {
@@ -3817,7 +3852,7 @@ body {
 
 .admin-print-metrics {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 8px;
 }
 
@@ -4107,5 +4142,216 @@ body {
     width: 100%;
     max-width: none;
     margin: 0;
+  }
+}
+
+.topbar-cart-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-cart-count {
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #2f281c;
+  color: #fffdf8 !important;
+  font-size: 11px !important;
+  line-height: 1;
+  padding: 0 5px;
+}
+
+.order-history-list {
+  display: grid;
+  gap: 14px;
+}
+
+.order-history-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px 24px;
+  align-items: end;
+  border: 1px solid rgba(122, 93, 46, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.86);
+  box-shadow: 0 20px 55px rgba(58, 45, 27, 0.08);
+  padding: 22px;
+}
+
+.order-history-card__heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.order-history-card__heading h2 {
+  margin: 4px 0;
+  font-size: 28px;
+}
+
+.order-history-card__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.order-history-card__facts div {
+  display: grid;
+  gap: 4px;
+}
+
+.order-history-card__facts dt {
+  color: #756a5b;
+  font-size: 12px;
+}
+
+.order-history-card__facts dd {
+  margin: 0;
+  color: #2f281c;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.order-status {
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(122, 93, 46, 0.18);
+  border-radius: 999px;
+  background: #f3eee3;
+  color: #5f5547;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+
+.order-status[data-status="PAID"],
+.order-status[data-status="DONE"] {
+  border-color: rgba(45, 119, 79, 0.25);
+  background: #e8f3eb;
+  color: #2f704c;
+}
+
+.order-status[data-status="PRINTING"] {
+  border-color: rgba(47, 91, 154, 0.24);
+  background: #e9eff8;
+  color: #315f9d;
+}
+
+.order-status[data-status="CANCELLED"] {
+  border-color: rgba(165, 56, 47, 0.25);
+  background: #f8e9e6;
+  color: #a5382f;
+}
+
+.cart-grid {
+  align-items: stretch;
+}
+
+.cart-card .primary-action,
+.cart-card .danger-action {
+  min-height: 34px;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.cart-empty-state,
+.order-empty-state {
+  justify-items: start;
+}
+
+.button-with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.confirm-delete-dialog {
+  position: relative;
+  width: min(460px, 100%);
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(122, 93, 46, 0.2);
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 28px 90px rgba(35, 28, 18, 0.3);
+  padding: 28px;
+}
+
+.confirm-delete-dialog h2,
+.confirm-delete-dialog p {
+  margin: 0;
+}
+
+.confirm-delete-dialog h2 {
+  font-size: 28px;
+}
+
+.confirm-delete-dialog > p:not(.eyebrow) {
+  color: #6c604f;
+  line-height: 1.55;
+}
+
+.confirm-delete-dialog__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(122, 93, 46, 0.18);
+  border-radius: 6px;
+  background: #fff;
+  color: #493b28;
+  cursor: pointer;
+}
+
+.confirm-delete-dialog__icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f8e9e6;
+  color: #a5382f;
+}
+
+.confirm-delete-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .order-history-card {
+    grid-template-columns: 1fr;
+  }
+
+  .order-history-card__heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .order-history-card__facts {
+    grid-template-columns: 1fr;
+  }
+
+  .confirm-delete-dialog__actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .confirm-delete-dialog__actions > * {
+    width: 100%;
   }
 }

@@ -8,6 +8,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -19,6 +24,9 @@ import tools.jackson.databind.node.ArrayNode;
 
 @Service
 class GeminiClient {
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long MAX_RETRY_DELAY_MILLIS = 2_000;
+    private static final long[] RETRY_BACKOFF_MILLIS = {250, 750};
 
     private final AiConfigService aiConfigService;
     private final AiUsageLogService aiUsageLogService;
@@ -66,16 +74,17 @@ class GeminiClient {
         var started = System.nanoTime();
         try {
             var apiKey = aiConfigService.requireGeminiApiKey();
-            var request = HttpRequest.newBuilder(endpoint(model, apiKey))
+            var request = HttpRequest.newBuilder(endpoint(model))
                     .timeout(Duration.ofSeconds(20))
                     .header("Content-Type", "application/json")
+                    .header("x-goog-api-key", apiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody(prompt), StandardCharsets.UTF_8))
                     .build();
 
             try {
-                var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                var response = sendWithRetry(request);
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini request failed with status " + response.statusCode());
+                    throw upstreamFailure(response.statusCode());
                 }
                 var text = extractText(response.body());
                 aiUsageLogService.record(feature, model, "SUCCESS", elapsedMillis(started), null);
@@ -98,11 +107,77 @@ class GeminiClient {
         }
     }
 
+    private HttpResponse<String> sendWithRetry(HttpRequest request) throws IOException, InterruptedException {
+        for (var attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            var response = httpClient.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+            if (!isRetryable(response.statusCode()) || attempt == MAX_ATTEMPTS) {
+                return response;
+            }
+            Thread.sleep(retryDelayMillis(response, attempt - 1));
+        }
+        throw new IllegalStateException("Gemini retry loop completed without a response");
+    }
+
+    private static boolean isRetryable(int status) {
+        return status == HttpStatus.TOO_MANY_REQUESTS.value()
+                || status == HttpStatus.SERVICE_UNAVAILABLE.value();
+    }
+
+    private static ResponseStatusException upstreamFailure(int status) {
+        return switch (status) {
+            case 429 -> new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS,
+                    "Gemini rate limit exceeded"
+            );
+            case 503 -> new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Gemini service is unavailable"
+            );
+            default -> new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Gemini request failed with status " + status
+            );
+        };
+    }
+
+    private static long retryDelayMillis(HttpResponse<?> response, int retryIndex) {
+        var retryAfter = response.headers().firstValue("Retry-After");
+        if (retryAfter.isPresent()) {
+            var requestedDelay = retryAfterDelayMillis(retryAfter.get());
+            if (requestedDelay >= 0) {
+                return requestedDelay;
+            }
+        }
+
+        var baseDelay = RETRY_BACKOFF_MILLIS[retryIndex];
+        var jitter = ThreadLocalRandom.current().nextLong((baseDelay / 4) + 1);
+        return Math.min(MAX_RETRY_DELAY_MILLIS, baseDelay + jitter);
+    }
+
+    static long retryAfterDelayMillis(String value) {
+        var normalized = value == null ? "" : value.strip();
+        try {
+            var seconds = Long.parseLong(normalized);
+            return seconds < 0 ? -1 : Math.min(seconds, 2) * 1_000;
+        } catch (NumberFormatException ignored) {
+            try {
+                var retryAt = ZonedDateTime.parse(normalized, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+                var delay = Duration.between(Instant.now(), retryAt).toMillis();
+                return Math.min(MAX_RETRY_DELAY_MILLIS, Math.max(0, delay));
+            } catch (DateTimeParseException invalidDate) {
+                return -1;
+            }
+        }
+    }
+
     private static long elapsedMillis(long started) {
         return Duration.ofNanos(System.nanoTime() - started).toMillis();
     }
 
-    private URI endpoint(String model, String apiKey) {
+    private URI endpoint(String model) {
         var normalizedModel = model == null ? "" : model.strip();
         if (normalizedModel.startsWith("models/")) {
             normalizedModel = normalizedModel.substring("models/".length());
@@ -111,8 +186,7 @@ class GeminiClient {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Gemini text model is not configured");
         }
         var encodedModel = URLEncoder.encode(normalizedModel, StandardCharsets.UTF_8);
-        var encodedKey = URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
-        return URI.create(baseUrl + "/models/" + encodedModel + ":generateContent?key=" + encodedKey);
+        return URI.create(baseUrl + "/models/" + encodedModel + ":generateContent");
     }
 
     private String requestBody(String prompt) {

@@ -1,5 +1,7 @@
 package com.example.vizi.order;
 
+import java.util.List;
+
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
@@ -29,6 +31,11 @@ class OrderController {
             Authentication authentication
     ) {
         return orderService.createOrder(request, authentication.getName());
+    }
+
+    @GetMapping
+    List<OrderResponse> listOrders(Authentication authentication) {
+        return orderService.listOwnedOrders(authentication.getName());
     }
 
     @GetMapping("/{orderId}")

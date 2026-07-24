@@ -8,5 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface OrderRepository extends JpaRepository<ViziOrder, Long> {
     Optional<ViziOrder> findByIdAndUser_Id(Long id, Long userId);
 
+    List<ViziOrder> findByUser_IdOrderByCreatedAtDesc(Long userId);
+
     List<ViziOrder> findAllByOrderByCreatedAtDesc();
 }

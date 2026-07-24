@@ -1,6 +1,7 @@
 export type PrintSheetKey = "A0" | "A1" | "A2" | "A3" | "A4";
 export type CardRotation = 0 | 90;
 export type PlacementReflection = "none" | "x" | "y";
+export type PrintOrientation = "portrait" | "landscape";
 
 export type PrintSheet = {
   key: PrintSheetKey;
@@ -18,13 +19,19 @@ export type ImpositionPlacement = {
 
 export type ImpositionResult = {
   sheet: PrintSheet;
+  orientation: PrintOrientation;
   cardRotation: CardRotation;
+  cardWidthMm: number;
+  cardHeightMm: number;
   columns: number;
   rows: number;
   cardsPerSheet: number;
   sheetCount: number;
   quantity: number;
   bleedMm: number;
+  horizontalGapMm: number;
+  verticalGapMm: number;
+  /** @deprecated Use horizontalGapMm or verticalGapMm. */
   gutterMm: number;
   marginMm: number;
   placements: ImpositionPlacement[][];
@@ -84,7 +91,8 @@ function makeCandidate(
   cardHeightMm: number,
   rotation: CardRotation,
   bleedMm: number,
-  gutterMm: number,
+  horizontalGapMm: number,
+  verticalGapMm: number,
   marginMm: number,
 ): Candidate {
   const trimWidth = rotation === 90 ? cardHeightMm : cardWidthMm;
@@ -93,11 +101,11 @@ function makeCandidate(
   const footprintHeight = trimHeight + bleedMm * 2;
   const availableWidth = sheet.widthMm - marginMm * 2;
   const availableHeight = sheet.heightMm - marginMm * 2;
-  const columns = fitCount(availableWidth, footprintWidth, gutterMm);
-  const rows = fitCount(availableHeight, footprintHeight, gutterMm);
+  const columns = fitCount(availableWidth, footprintWidth, horizontalGapMm);
+  const rows = fitCount(availableHeight, footprintHeight, verticalGapMm);
   const cardsPerSheet = columns * rows;
-  const usedWidth = cardsPerSheet === 0 ? 0 : columns * footprintWidth + Math.max(0, columns - 1) * gutterMm;
-  const usedHeight = cardsPerSheet === 0 ? 0 : rows * footprintHeight + Math.max(0, rows - 1) * gutterMm;
+  const usedWidth = cardsPerSheet === 0 ? 0 : columns * footprintWidth + Math.max(0, columns - 1) * horizontalGapMm;
+  const usedHeight = cardsPerSheet === 0 ? 0 : rows * footprintHeight + Math.max(0, rows - 1) * verticalGapMm;
   const wasteMm2 = Math.max(0, availableWidth * availableHeight - usedWidth * usedHeight);
 
   return { sheet, rotation, columns, rows, cardsPerSheet, wasteMm2 };
@@ -121,20 +129,31 @@ export function calculateImposition(input: {
   cardHeightMm: number;
   quantity: number;
   sheet: PrintSheetKey;
+  orientation?: PrintOrientation;
   bleedMm?: number;
   gutterMm?: number;
+  horizontalGapMm?: number;
+  verticalGapMm?: number;
   marginMm?: number;
 }): ImpositionResult {
   const cardWidthMm = Number.isFinite(input.cardWidthMm) ? input.cardWidthMm : 0;
   const cardHeightMm = Number.isFinite(input.cardHeightMm) ? input.cardHeightMm : 0;
   const quantity = Math.max(1, Math.floor(input.quantity));
-  const bleedMm = Math.max(0, input.bleedMm ?? DEFAULT_PRINT_BLEED_MM);
-  const gutterMm = Math.max(0, input.gutterMm ?? DEFAULT_PRINT_GUTTER_MM);
-  const marginMm = Math.max(0, input.marginMm ?? DEFAULT_PRINT_MARGIN_MM);
-  const sheet = PRINT_SHEETS[input.sheet];
-  if (!sheet || cardWidthMm <= 0 || cardHeightMm <= 0) {
+  const nonNegative = (value: number | undefined, fallback: number) =>
+    Number.isFinite(value) ? Math.max(0, value as number) : fallback;
+  const bleedMm = nonNegative(input.bleedMm, DEFAULT_PRINT_BLEED_MM);
+  const legacyGapMm = nonNegative(input.gutterMm, DEFAULT_PRINT_GUTTER_MM);
+  const horizontalGapMm = nonNegative(input.horizontalGapMm, legacyGapMm);
+  const verticalGapMm = nonNegative(input.verticalGapMm, legacyGapMm);
+  const marginMm = nonNegative(input.marginMm, DEFAULT_PRINT_MARGIN_MM);
+  const orientation = input.orientation ?? "portrait";
+  const baseSheet = PRINT_SHEETS[input.sheet];
+  if (!baseSheet || cardWidthMm <= 0 || cardHeightMm <= 0) {
     throw new Error("Card and sheet dimensions must be positive");
   }
+  const sheet = orientation === "landscape"
+    ? { ...baseSheet, widthMm: baseSheet.heightMm, heightMm: baseSheet.widthMm }
+    : baseSheet;
 
   const candidates = [0, 90]
     .map((rotation) => makeCandidate(
@@ -143,7 +162,8 @@ export function calculateImposition(input: {
       cardHeightMm,
       rotation as CardRotation,
       bleedMm,
-      gutterMm,
+      horizontalGapMm,
+      verticalGapMm,
       marginMm,
     ))
     .filter((candidate) => candidate.cardsPerSheet > 0)
@@ -164,8 +184,8 @@ export function calculateImposition(input: {
       const column = cardIndex % chosen.columns;
       const row = Math.floor(cardIndex / chosen.columns);
       return {
-        x: marginMm + bleedMm + column * (footprintWidth + gutterMm),
-        y: marginMm + bleedMm + row * (footprintHeight + gutterMm),
+        x: marginMm + bleedMm + column * (footprintWidth + horizontalGapMm),
+        y: marginMm + bleedMm + row * (footprintHeight + verticalGapMm),
         width: trimWidth,
         height: trimHeight,
         rotation: chosen.rotation,
@@ -175,14 +195,19 @@ export function calculateImposition(input: {
 
   return {
     sheet,
+    orientation,
     cardRotation: chosen.rotation,
+    cardWidthMm,
+    cardHeightMm,
     columns: chosen.columns,
     rows: chosen.rows,
     cardsPerSheet: chosen.cardsPerSheet,
     sheetCount,
     quantity,
     bleedMm,
-    gutterMm,
+    horizontalGapMm,
+    verticalGapMm,
+    gutterMm: horizontalGapMm,
     marginMm,
     placements,
   };

@@ -215,6 +215,101 @@ class OrderApiIntegrationTests {
     }
 
     @Test
+    void customerOrderListContainsOnlyOwnedOrdersNewestFirst() throws Exception {
+        userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
+        userRepository.save(new User("other@example.test", "test-hash", "Other"));
+        var template = templateRepository.save(new Template(
+                "Order History Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[{\"type\":\"text\",\"text\":\"History\"}]}",
+                true
+        ));
+
+        var firstDesign = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number firstDesignId = JsonPath.read(firstDesign.getResponse().getContentAsString(), "$.id");
+        var firstOrder = mockMvc.perform(post("/api/orders")
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "matte-350",
+                                  "quantity": 100,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(firstDesignId.longValue())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number firstOrderId = JsonPath.read(firstOrder.getResponse().getContentAsString(), "$.id");
+
+        var secondDesign = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number secondDesignId = JsonPath.read(secondDesign.getResponse().getContentAsString(), "$.id");
+        var secondOrder = mockMvc.perform(post("/api/orders")
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "matte-350",
+                                  "quantity": 200,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(secondDesignId.longValue())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number secondOrderId = JsonPath.read(secondOrder.getResponse().getContentAsString(), "$.id");
+
+        var otherDesign = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("other@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number otherDesignId = JsonPath.read(otherDesign.getResponse().getContentAsString(), "$.id");
+        mockMvc.perform(post("/api/orders")
+                        .with(user("other@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "matte-350",
+                                  "quantity": 300,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(otherDesignId.longValue())))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/orders")
+                        .with(user("owner@example.test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(secondOrderId.longValue()))
+                .andExpect(jsonPath("$[0].status").value("PENDING_PAYMENT"))
+                .andExpect(jsonPath("$[0].items[0].quantity").value(200))
+                .andExpect(jsonPath("$[1].id").value(firstOrderId.longValue()))
+                .andExpect(jsonPath("$[1].items[0].quantity").value(100));
+
+        mockMvc.perform(get("/api/orders")
+                        .with(user("other@example.test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].items[0].quantity").value(300));
+    }
+
+    @Test
     void orderSnapshotDoesNotChangeWhenDesignIsEditedAfterCheckout() throws Exception {
         userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
         var template = templateRepository.save(new Template(
@@ -384,6 +479,47 @@ class OrderApiIntegrationTests {
                                 }
                                 """.formatted(designId.longValue())))
                 .andExpect(status().isBadRequest());
+        assertThat(orderRepository.count()).isZero();
+    }
+
+    @Test
+    void catalogStatusAtCheckoutRejectsOutOfStockPaperWithoutReservationLock() throws Exception {
+        userRepository.save(new User("catalog-checkout@example.test", "test-hash", "Catalog Checkout"));
+        var template = templateRepository.save(new Template(
+                "Catalog Checkout Card",
+                "business",
+                null,
+                new BigDecimal("90.00"),
+                new BigDecimal("54.00"),
+                "{\"layers\":[{\"type\":\"text\",\"text\":\"Catalog\"}]}",
+                true
+        ));
+        var createDesignResponse = mockMvc.perform(post("/api/designs/from-template/" + template.id())
+                        .with(user("catalog-checkout@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number designId = JsonPath.read(createDesignResponse.getResponse().getContentAsString(), "$.id");
+        jdbcTemplate.update("""
+                insert into paper_stocks(code, name, price_per_100, status, active)
+                values (?, ?, ?, 'OUT_OF_STOCK', true)
+                """, "catalog-out-of-stock", "Catalog Out of Stock", new BigDecimal("180000.00"));
+
+        mockMvc.perform(post("/api/orders")
+                        .with(user("catalog-checkout@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "designId": %d,
+                                  "paper": "catalog-out-of-stock",
+                                  "quantity": 100,
+                                  "roundedCorners": false
+                                }
+                                """.formatted(designId.longValue())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Paper is out of stock"));
+
         assertThat(orderRepository.count()).isZero();
     }
 

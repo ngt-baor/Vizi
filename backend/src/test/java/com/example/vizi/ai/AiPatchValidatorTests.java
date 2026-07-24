@@ -25,6 +25,91 @@ class AiPatchValidatorTests {
     }
 
     @Test
+    void acceptsTextUpdateForV2FrontLayer() {
+        var patch = parse("""
+                {"schemaVersion":1,"editStrength":"light","targetSide":"front","summary":"Rewrite headline",
+                 "actions":[{"op":"update_text","layerId":"layer-1","text":"Vizi Atelier"}]}
+                """);
+
+        var v2Canvas = """
+                {"schemaVersion":2,"pages":{"front":{"id":"front","layers":[{"id":"layer-1","type":"text","content":"Old headline"}]},"back":{"id":"back","layers":[]}}}
+                """;
+
+        assertThat(validator.validate(patch, v2Canvas, false)).isSameAs(patch);
+    }
+
+    @Test
+    void rejectsV2CanvasMissingBackPageWithSpecificMessage() {
+        var v2Canvas = """
+                {
+                  "schemaVersion": 2,
+                  "pages": {
+                    "front": {"id":"front","layers":[]}
+                  }
+                }
+                """;
+
+        assertThatThrownBy(() -> validator.textLayer(v2Canvas, "title", AiTargetSide.FRONT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Canvas V2 is missing the back page");
+    }
+
+    @Test
+    void reportsLayerNotFoundWhenRequestedV2SideIsEmpty() {
+        var v2Canvas = """
+                {
+                  "schemaVersion": 2,
+                  "pages": {
+                    "front": {"id":"front","layers":[]},
+                    "back": {"id":"back","layers":[{"id":"title","type":"text","content":"Back title"}]}
+                  }
+                }
+                """;
+
+        assertThatThrownBy(() -> validator.textLayer(v2Canvas, "title", AiTargetSide.FRONT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Patch action targets a layer that does not exist");
+    }
+
+    @Test
+    void resolvesV2TextLayerWithinRequestedSideWhenIdsOverlap() {
+        var v2Canvas = """
+                {
+                  "schemaVersion": 2,
+                  "pages": {
+                    "front": {"id":"front","layers":[{"id":"shared-title","type":"text","content":"Front title"}]},
+                    "back": {"id":"back","layers":[{"id":"shared-title","type":"text","content":"Back title"}]}
+                  }
+                }
+                """;
+
+        assertThat(validator.textLayer(v2Canvas, "shared-title", AiTargetSide.FRONT).text())
+                .isEqualTo("Front title");
+        assertThat(validator.textLayer(v2Canvas, "shared-title", AiTargetSide.BACK).text())
+                .isEqualTo("Back title");
+    }
+
+    @Test
+    void rejectsDuplicateLayerIdsWithinTheSameV2Side() {
+        var v2Canvas = """
+                {
+                  "schemaVersion": 2,
+                  "pages": {
+                    "front": {"id":"front","layers":[
+                      {"id":"title","type":"text","content":"First"},
+                      {"id":"title","type":"text","content":"Second"}
+                    ]},
+                    "back": {"id":"back","layers":[]}
+                  }
+                }
+                """;
+
+        assertThatThrownBy(() -> validator.textLayer(v2Canvas, "title", AiTargetSide.FRONT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Canvas layer IDs must be unique");
+    }
+
+    @Test
     void rejectsUnknownOperationAndMissingTarget() {
         var unknownOperation = parse("""
                 {"schemaVersion":1,"editStrength":"light","targetSide":"front","summary":"Test",

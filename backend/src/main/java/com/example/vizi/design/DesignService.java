@@ -77,7 +77,7 @@ public class DesignService {
         } catch (Exception exception) {
             throw new ResponseStatusException(
                     HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Create design failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage(),
+                    "Internal server error",
                     exception
             );
         }

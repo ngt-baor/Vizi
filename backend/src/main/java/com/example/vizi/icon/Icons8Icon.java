@@ -5,6 +5,7 @@ record Icons8Icon(
         String name,
         String category,
         String subcategory,
+        String commonName,
         String platform,
         String previewUrl,
         String sourceUrl,

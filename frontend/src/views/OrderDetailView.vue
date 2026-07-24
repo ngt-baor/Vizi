@@ -14,6 +14,29 @@ const currency = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 0,
 });
 
+const statusLabels: Record<string, string> = {
+  DRAFT: "Draft",
+  PENDING_PAYMENT: "Pending payment",
+  PAID: "Paid",
+  PRINTING: "Printing",
+  DONE: "Completed",
+  CANCELLED: "Cancelled",
+};
+
+const statusLabel = computed(() => {
+  const status = order.value?.status ?? "";
+  return statusLabels[status] ?? status.replaceAll("_", " ").toLowerCase();
+});
+const statusSummary = computed(() => {
+  switch (order.value?.status) {
+    case "PAID": return "Payment is confirmed and the order is queued for production.";
+    case "PRINTING": return "Your cards are currently being printed.";
+    case "DONE": return "Your print order has been completed.";
+    case "CANCELLED": return "This order was cancelled.";
+    default: return "Your print order is saved and waiting for payment confirmation.";
+  }
+});
+
 const totalQuantity = computed(() =>
   order.value?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0,
 );
@@ -33,7 +56,7 @@ onMounted(async () => {
 
 <template>
   <section class="checkout-view">
-    <RouterLink class="back-link" to="/designs">Back to drafts</RouterLink>
+    <RouterLink class="back-link" to="/orders">Back to orders</RouterLink>
 
     <p v-if="loading" class="muted">Loading order...</p>
     <p v-else-if="error" class="error-text" role="alert">
@@ -44,12 +67,12 @@ onMounted(async () => {
     <template v-else-if="order">
       <header class="checkout-header">
         <div>
-          <p class="eyebrow">Order created</p>
+          <p class="eyebrow">Order status</p>
           <h1>Order #{{ order.id }}</h1>
-          <p class="summary">Your print order is saved and waiting for payment confirmation.</p>
+          <p class="summary">{{ statusSummary }}</p>
         </div>
-        <RouterLink class="secondary-action" to="/designs">
-          View drafts
+        <RouterLink class="secondary-action" to="/orders">
+          All orders
         </RouterLink>
       </header>
 
@@ -57,7 +80,7 @@ onMounted(async () => {
         <dl class="checkout-summary">
           <div>
             <dt>Status</dt>
-            <dd>{{ order.status }}</dd>
+            <dd><span class="order-status" :data-status="order.status">{{ statusLabel }}</span></dd>
           </div>
           <div>
             <dt>Total quantity</dt>

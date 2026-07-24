@@ -1,9 +1,13 @@
 package com.example.vizi.ai;
 
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import com.example.vizi.design.CanvasLayerGroups;
 
 import org.springframework.stereotype.Service;
 
@@ -36,16 +40,19 @@ class AiPatchValidator {
         if (patch == null) {
             throw invalid("Patch is required");
         }
-        var layers = layersById(canvasJson);
+        var layers = layersById(canvasJson, patch.targetSide());
         for (var action : patch.actions()) {
             validateAction(action, layers, allowsLayerMutation);
         }
         return patch;
     }
-    AiTextLayer textLayer(String canvasJson, String layerId) {
-        var layer = requireLayer(layersById(canvasJson), layerId);
+    AiTextLayer textLayer(String canvasJson, String layerId, AiTargetSide targetSide) {
+        var layer = requireLayer(layersById(canvasJson, targetSide), layerId);
         requireType(layer, "text", "Text rewrite");
         var text = optionalString(layer, "text");
+        if (text == null) {
+            text = optionalString(layer, "content");
+        }
         if (text == null) {
             text = optionalString(layer, "value");
         }
@@ -188,17 +195,15 @@ class AiPatchValidator {
         validateOptionalRange(layer, "rotation", 0, 360);
     }
 
-    private Map<String, JsonNode> layersById(String canvasJson) {
+    private Map<String, JsonNode> layersById(String canvasJson, AiTargetSide targetSide) {
         final JsonNode canvas;
         try {
             canvas = objectMapper.readTree(canvasJson);
         } catch (RuntimeException exception) {
             throw invalid("Canvas JSON is invalid");
         }
-        var layers = canvas == null ? null : canvas.get("layers");
-        if (canvas == null || !canvas.isObject() || layers == null || !layers.isArray()) {
-            throw invalid("Canvas must contain a layers array");
-        }
+        var layerGroups = CanvasLayerGroups.require(canvas);
+        var layers = layersForSide(layerGroups, targetSide);
 
         var result = new LinkedHashMap<String, JsonNode>();
         for (int index = 0; index < layers.size(); index++) {
@@ -217,6 +222,24 @@ class AiPatchValidator {
     private static String legacyOrStableId(JsonNode layer, int index) {
         var id = optionalString(layer, "id");
         return id != null && LAYER_ID.matcher(id).matches() ? id : "layer-" + (index + 1);
+    }
+
+    private static JsonNode layersForSide(
+            List<CanvasLayerGroups.LayerGroup> layerGroups,
+            AiTargetSide targetSide
+    ) {
+        if (layerGroups.isEmpty()) {
+            throw invalid("Canvas must contain a layers array or V2 front/back pages");
+        }
+        if (layerGroups.size() == 1 && layerGroups.getFirst().side() == null) {
+            return layerGroups.getFirst().layers();
+        }
+        var side = targetSide.name().toLowerCase(Locale.ROOT);
+        return layerGroups.stream()
+                .filter(group -> side.equals(group.side()))
+                .map(CanvasLayerGroups.LayerGroup::layers)
+                .findFirst()
+                .orElseThrow(() -> invalid("Canvas does not contain the target side"));
     }
 
     private static JsonNode requireLayer(Map<String, JsonNode> layers, String layerId) {

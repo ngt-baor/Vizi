@@ -37,6 +37,22 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AiTextRewriteApiIntegrationTests {
+    private static final String V2_CANVAS_WITH_SHARED_IDS = """
+            {
+              "schemaVersion": 2,
+              "documentId": "10",
+              "name": "Two-sided card",
+              "card": {"widthMm": 90, "heightMm": 54},
+              "pages": {
+                "front": {"id":"front","name":"Front","background":"#ffffff","layers":[
+                  {"id":"shared-title","name":"Front title","type":"text","content":"Front Atelier","x":10,"y":10,"width":45,"height":12}
+                ]},
+                "back": {"id":"back","name":"Back","background":"#ffffff","layers":[
+                  {"id":"shared-title","name":"Back title","type":"text","content":"Back Atelier","x":10,"y":10,"width":45,"height":12}
+                ]}
+              }
+            }
+            """;
 
     private static final String CANVAS = """
             {"layers":[{"type":"text","text":"Vizi Atelier","x":10,"y":10,"width":45,"height":12}]}
@@ -137,6 +153,31 @@ class AiTextRewriteApiIntegrationTests {
         assertThat(jdbcTemplate.queryForObject("select feature from ai_usage_logs", String.class))
                 .isEqualTo("text.rewrite");
         assertThat(GEMINI_REQUEST.get()).contains("Vizi Atelier").contains("Make this more luxurious");
+        assertThat(GEMINI_REQUEST.get())
+                .contains("When a language cannot be inferred, prefer Vietnamese, then English, then another language.")
+                .doesNotContain("Russian");
+    }
+
+    @Test
+    void ownerReceivesBackSideRewriteForV2CanvasWithDuplicateLayerIds() throws Exception {
+        jdbcTemplate.update("update designs set canvas_json = ? where id = 10", V2_CANVAS_WITH_SHARED_IDS);
+        respondWithPatch("""
+                {"schemaVersion":1,"editStrength":"light","targetSide":"back","summary":"Refined back title","actions":[{"op":"update_text","layerId":"shared-title","text":"Back Luxury Atelier"}]}
+                """);
+
+        mockMvc.perform(rewriteRequest("shared-title", "back")
+                        .with(user("owner@example.test"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetSide").value("back"))
+                .andExpect(jsonPath("$.actions[0].layerId").value("shared-title"))
+                .andExpect(jsonPath("$.actions[0].text").value("Back Luxury Atelier"));
+
+        assertThat(GEMINI_REQUEST.get())
+                .contains("Back Atelier")
+                .doesNotContain("Front Atelier");
+        assertThat(jdbcTemplate.queryForObject("select canvas_json from designs where id = 10", String.class))
+                .isEqualTo(V2_CANVAS_WITH_SHARED_IDS);
     }
 
     @Test
@@ -172,17 +213,21 @@ class AiTextRewriteApiIntegrationTests {
     }
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder rewriteRequest() {
+        return rewriteRequest("layer-1", "front");
+    }
+
+    private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder rewriteRequest(String layerId, String targetSide) {
         return post("/api/ai/text/rewrite")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
                           "designId": 10,
-                          "layerId": "layer-1",
+                          "layerId": "%s",
                           "prompt": "Make this more luxurious",
                           "editStrength": "light",
-                          "targetSide": "front"
+                          "targetSide": "%s"
                         }
-                        """);
+                        """.formatted(layerId, targetSide));
     }
 
     private static void respondWithPatch(String patch) {

@@ -53,6 +53,7 @@ public class OrderService {
         var user = authService.requireUser(email);
         var design = designRepository.findByIdAndUser_Id(request.designId(), user.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Design not found"));
+        // PaperStock is an availability catalog snapshot; checkout does not reserve inventory or lock its row.
         var paper = paperCatalogService.requireOrderable(request.paper());
         var preflight = preflightService.check(
                 design.canvasJson(),
@@ -83,6 +84,14 @@ public class OrderService {
         return orderRepository.findByIdAndUser_Id(orderId, user.id())
                 .map(OrderResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> listOwnedOrders(String email) {
+        var user = authService.requireUser(email);
+        return orderRepository.findByUser_IdOrderByCreatedAtDesc(user.id()).stream()
+                .map(OrderResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)

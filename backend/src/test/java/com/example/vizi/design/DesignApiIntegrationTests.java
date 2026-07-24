@@ -362,6 +362,24 @@ class DesignApiIntegrationTests {
     }
 
     @Test
+    void oversizedJsonDocumentIsRejectedBeforeDtoValidation() throws Exception {
+        var oversizedName = "x".repeat(2_000_100);
+        var requestJson = """
+                {"name":"%s","widthMm":90,"heightMm":54,"canvasJson":null}
+                """.formatted(oversizedName);
+
+        mockMvc.perform(post("/api/designs")
+                        .with(user("owner@example.test"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Malformed JSON"));
+
+        assertThat(designRepository.count()).isZero();
+    }
+
+    @Test
     void ownerCanSaveV2FrontAndBackCanvasThroughApi() throws Exception {
         userRepository.save(new User("owner@example.test", "test-hash", "Owner"));
         var template = templateRepository.save(new Template(

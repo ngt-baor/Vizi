@@ -18,8 +18,9 @@ class Icons8Controller {
             @RequestParam String term,
             @RequestParam(defaultValue = "en") String language,
             @RequestParam(defaultValue = "") String platform,
-            @RequestParam(defaultValue = "24") int amount
+            @RequestParam(defaultValue = "48") int amount,
+            @RequestParam(defaultValue = "0") int offset
     ) {
-        return icons8Service.search(term, language, platform, amount);
+        return icons8Service.search(term, language, platform, amount, offset);
     }
 }

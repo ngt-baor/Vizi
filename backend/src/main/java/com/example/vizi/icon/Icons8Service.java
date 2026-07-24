@@ -20,7 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 
 @Service
-class Icons8Service {
+class   Icons8Service {
 
     private static final String CREDIT_TEXT = "Icons by Icons8";
     private static final String CREDIT_URL = "https://icons8.com";
@@ -50,17 +50,22 @@ class Icons8Service {
     }
 
     Icons8SearchResponse search(String term, String language, String platform, int amount) {
+        return search(term, language, platform, amount, 0);
+    }
+
+    Icons8SearchResponse search(String term, String language, String platform, int amount, int offset) {
         var cleanTerm = validateTerm(term);
         var cleanLanguage = normalizeSimpleToken(language, "en");
-        var cleanPlatform = normalizeSimpleToken(platform, "");
+        var cleanPlatform = normalizePlatformList(platform);
         var cleanAmount = Math.max(1, Math.min(amount, 48));
+        var cleanOffset = Math.max(0, Math.min(offset, 10_000));
 
         if (apiKey.isBlank()) {
             return Icons8SearchResponse.disabled("Icons8 search is not configured. Set ICONS8_API_KEY on the backend.");
         }
 
         try {
-            var request = HttpRequest.newBuilder(endpoint(cleanTerm, cleanLanguage, cleanPlatform, cleanAmount))
+            var request = HttpRequest.newBuilder(endpoint(cleanTerm, cleanLanguage, cleanPlatform, cleanAmount, cleanOffset))
                     .timeout(Duration.ofSeconds(12))
                     .header("Accept", "application/json")
                     .header("User-Agent", "Vizi/1.0")
@@ -80,11 +85,12 @@ class Icons8Service {
         }
     }
 
-    private URI endpoint(String term, String language, String platform, int amount) {
+    private URI endpoint(String term, String language, String platform, int amount, int offset) {
         var query = new StringBuilder()
                 .append("term=").append(encode(term))
                 .append("&amount=").append(amount)
-                .append("&language=").append(encode(language));
+                .append("&language=").append(encode(language))
+                .append("&offset=").append(offset);
         if (!platform.isBlank()) {
             query.append("&platform=").append(encode(platform));
         }
@@ -112,8 +118,9 @@ class Icons8Service {
                     name,
                     stringValue(icon, "category"),
                     stringValue(icon, "subcategory"),
+                    commonName,
                     platform,
-                    trustedPreviewUrl(upstreamPreviewUrl) ? upstreamPreviewUrl : previewUrl(id),
+                    trustedPreviewUrl(upstreamPreviewUrl) ? upstreamPreviewUrl : previewUrl(id, commonName, platform),
                     sourceUrl(id, commonName.isBlank() ? name : commonName),
                     true,
                     booleanValue(icon, "isColor"),
@@ -149,8 +156,33 @@ class Icons8Service {
         return clean.matches("[A-Za-z0-9_-]{1,32}") ? clean : fallback;
     }
 
-    private static String previewUrl(String id) {
-        return "https://img.icons8.com/?size=96&id=" + encode(id) + "&format=png&color=000000";
+    private static String normalizePlatformList(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        var platforms = value.trim().split(",");
+        var clean = new ArrayList<String>();
+        for (var platform : platforms) {
+            var token = platform.trim();
+            if (!token.matches("[A-Za-z0-9_-]{1,32}")) {
+                return "";
+            }
+            clean.add(token);
+        }
+        return String.join(",", clean);
+    }
+
+    private static String previewUrl(String id, String commonName, String platform) {
+        var style = switch (platform) {
+            case "androidL" -> "material";
+            case "fluent" -> "fluency";
+            default -> platform;
+        };
+        var slug = commonName.matches("[A-Za-z0-9_-]{1,120}") ? commonName : id;
+        if (!style.matches("[A-Za-z0-9_-]{1,32}")) {
+            return "https://img.icons8.com/?size=96&id=" + encode(id) + "&format=png";
+        }
+        return "https://img.icons8.com/" + encode(style) + "/96/" + encode(slug) + ".png";
     }
 
     private static boolean trustedPreviewUrl(String value) {

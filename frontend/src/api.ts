@@ -179,6 +179,9 @@ export type OrderResponse = {
   status: string;
   totalAmount: number;
   items: OrderItemResponse[];
+  customerNote?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type PreflightIssue = {
@@ -753,6 +756,20 @@ export async function getOrder(orderId: number): Promise<OrderResponse> {
   }
 
   return response.json() as Promise<OrderResponse>;
+}
+
+export async function listOrders(): Promise<OrderResponse[]> {
+  const response = await fetch(`${apiBaseUrl}/api/orders`, {
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    throw new Error("Sign in to view your orders");
+  }
+  if (!response.ok) {
+    throw await authError(response, `Order list failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<OrderResponse[]>;
 }
 
 export { apiBaseUrl };

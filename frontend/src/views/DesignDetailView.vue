@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ShoppingCart } from "@lucide/vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { deleteDesign, getDesign, type DesignDetail } from "../api";
+import { addCartDesign, removeCartDesign } from "../cart";
 import CanvasPreview from "../components/CanvasPreview.vue";
+import ConfirmDeleteDialog from "../components/ConfirmDeleteDialog.vue";
 import { type EditorSide } from "../editor-v2/document";
 import {
   readEditorPreviewPages,
@@ -20,13 +23,14 @@ const previewPages = ref<Record<EditorSide, EditorPreviewPage>>({
 const loading = ref(true);
 const error = ref("");
 const deleting = ref(false);
-const confirmingDelete = ref(false);
+const deleteDialogOpen = ref(false);
 const sides: EditorSide[] = ["front", "back"];
 
 const activePage = computed(() => previewPages.value[activeSide.value]);
 const totalLayerCount = computed(
   () => previewPages.value.front.layers.length + previewPages.value.back.layers.length,
 );
+const deleteDialogTitle = computed(() => `Delete "${design.value?.name ?? "draft"}"?`);
 const updatedAt = computed(() => {
   if (!design.value) {
     return "";
@@ -50,22 +54,25 @@ async function deleteDraft(): Promise<void> {
   if (!design.value || deleting.value) {
     return;
   }
-  if (!confirmingDelete.value) {
-    confirmingDelete.value = true;
-    error.value = "";
-    return;
-  }
 
   deleting.value = true;
   error.value = "";
   try {
     await deleteDesign(design.value.id);
+    removeCartDesign(design.value.id);
     await router.push({ name: "designs" });
   } catch (unknownError) {
     error.value = unknownError instanceof Error ? unknownError.message : "Cannot delete draft";
-    confirmingDelete.value = false;
+    deleteDialogOpen.value = false;
   } finally {
     deleting.value = false;
+  }
+}
+
+function addToCart(): void {
+  if (design.value) {
+    addCartDesign(design.value.id);
+    void router.push({ name: "cart" });
   }
 }
 
@@ -147,17 +154,30 @@ onMounted(async () => {
           >
             Checkout
           </RouterLink>
+          <button class="secondary-action button-with-icon" type="button" @click="addToCart">
+            <ShoppingCart :size="16" aria-hidden="true" />
+            Add to cart
+          </button>
           <button
             class="danger-action"
             type="button"
             :disabled="deleting"
-            @click="deleteDraft"
+            @click="deleteDialogOpen = true"
           >
-            {{ deleting ? "Deleting..." : confirmingDelete ? "Confirm delete" : "Delete draft" }}
+            Delete draft
           </button>
         </div>
         <p v-if="error" class="error-text" role="alert">{{ error }}</p>
       </div>
     </article>
+
+    <ConfirmDeleteDialog
+      :open="deleteDialogOpen"
+      :title="deleteDialogTitle"
+      description="This draft and its saved history will be permanently deleted. This action cannot be undone."
+      :busy="deleting"
+      @cancel="deleteDialogOpen = false"
+      @confirm="deleteDraft"
+    />
   </section>
 </template>

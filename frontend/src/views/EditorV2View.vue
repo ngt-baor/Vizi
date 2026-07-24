@@ -77,6 +77,7 @@ import {
   type PreflightReport,
   updateDesign,
 } from "../api";
+import { addCartDesign } from "../cart";
 import {
   createEditorDocumentV2,
   isUnmodifiedStarterDocumentV2,
@@ -196,7 +197,7 @@ const showGrid = ref(false);
 const canvasOverlayBounds = ref<CanvasOverlayBounds | null>(null);
 const preflightReport = ref<PreflightReport | null>(null);
 const preflightLoading = ref(false);
-const checkoutLoading = ref(false);
+const cartLoading = ref(false);
 const exportState = ref<"idle" | "exporting" | "downloaded" | "error">("idle");
 const exportError = ref("");
 const preflightError = ref("");
@@ -2037,23 +2038,24 @@ async function saveDraft(): Promise<void> {
   }
 }
 
-async function openCheckout(): Promise<void> {
+async function addCurrentDesignToCart(): Promise<void> {
   const designId = backendDesignId.value;
   if (!designId) {
-    saveError.value = "Save this draft before checkout.";
+    saveError.value = "Save this draft before adding it to the cart.";
     saveState.value = "error";
     return;
   }
-  if (checkoutLoading.value || saveState.value === "saving" || saveState.value === "loading") return;
+  if (cartLoading.value || saveState.value === "saving" || saveState.value === "loading") return;
 
-  checkoutLoading.value = true;
+  cartLoading.value = true;
   try {
     await saveDraft();
     if (saveState.value !== "error") {
-      await router.push({ name: "checkout", params: { designId } });
+      addCartDesign(designId);
+      await router.push({ name: "cart" });
     }
   } finally {
-    checkoutLoading.value = false;
+    cartLoading.value = false;
   }
 }
 
@@ -2340,10 +2342,10 @@ onBeforeUnmount(() => {
         <button
           class="editor-v2__checkout"
           type="button"
-          aria-label="Checkout"
-          title="Checkout"
-          :disabled="checkoutLoading || saveState === 'saving' || saveState === 'loading'"
-          @click="openCheckout"
+          aria-label="Add to cart"
+          title="Add to cart"
+          :disabled="cartLoading || saveState === 'saving' || saveState === 'loading'"
+          @click="addCurrentDesignToCart"
         >
           <ShoppingCart :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
